@@ -1,12 +1,9 @@
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
-import javax.swing.DefaultListModel;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
-import javax.swing.JList;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 
 public class GUI {
     // Show the GUI
@@ -21,8 +18,8 @@ public class GUI {
 
     //Display the content panel with sample news and events
     private static JPanel createContentPanel() {
-        DefaultListModel<ContentItems> items = new DefaultListModel<>();
-        items.addElement(new ContentItems("News", new String[]{
+        NewsEventsPanel panel = new NewsEventsPanel();
+        panel.addItem(new ContentItems("News", new String[]{
                 "Title", "Description", "Publish date", "Author",
                 "Source", "Source link", "Cover image", "Language"
         }, new String[]{
@@ -35,7 +32,7 @@ public class GUI {
                 "",
                 "English"
         }));
-        items.addElement(new ContentItems("Event", new String[]{
+        panel.addItem(new ContentItems("Event", new String[]{
                 "Title", "Description", "Event date", "Event time",
                 "Location", "Source", "Source link", "Cover image", "Language"
         }, new String[]{
@@ -50,10 +47,9 @@ public class GUI {
                 "English"
         }));
 
-        JList<ContentItems> itemList = new JList<>(items);
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.add(new JLabel("News and Events"), BorderLayout.NORTH);
-        panel.add(new JScrollPane(itemList), BorderLayout.CENTER);
-        return panel;
+        JPanel contentPanel = new JPanel(new BorderLayout());
+        contentPanel.add(new JLabel("News and Events"), BorderLayout.NORTH);
+        contentPanel.add(panel, BorderLayout.CENTER);
+        return contentPanel;
     }
 }
