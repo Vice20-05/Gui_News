@@ -33,9 +33,24 @@ public class JsonReader {
                 throw new IOException("Could not read RSS sources from: " + filePath);
             }
 
+            for (int i = 0; i < sources.size(); i++) {
+                RssSource source = sources.get(i);
+                if (source == null
+                        || isBlank(source.getName())
+                        || isBlank(source.getUrl())) {
+                    throw new IOException(
+                            "RSS source at index " + i + " must have a name and URL: " + filePath
+                    );
+                }
+            }
+
             return sources;
         } catch (JsonParseException | IllegalStateException e) {
             throw new IOException("Invalid RSS source JSON file: " + filePath, e);
         }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

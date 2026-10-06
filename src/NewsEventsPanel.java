@@ -1,6 +1,7 @@
 import java.awt.BorderLayout;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import javax.swing.DefaultListModel;
 import javax.swing.JList;
 import javax.swing.JPanel;
@@ -56,12 +57,15 @@ public class NewsEventsPanel extends JPanel {
     }
 
     public void addItem(ContentItems item) {
+        if (item == null) {
+            throw new IllegalArgumentException("item cannot be null");
+        }
         allItems.add(item);
         filterItems();
     }
 
     private void filterItems() {
-        String searchText = searchField.getText().trim().toLowerCase();
+        String searchText = searchField.getText().trim().toLowerCase(Locale.ROOT);
         visibleItems.clear();
 
         for (ContentItems item : allItems) {
@@ -78,12 +82,12 @@ public class NewsEventsPanel extends JPanel {
     }
 
     private boolean matchesSearch(ContentItems item, String searchText) {
-        if (item.getType().toLowerCase().contains(searchText)) {
+        if (item.getType().toLowerCase(Locale.ROOT).contains(searchText)) {
             return true;
         }
 
         for (String value : item.getValues()) {
-            if (value.toLowerCase().contains(searchText)) {
+            if (value.toLowerCase(Locale.ROOT).contains(searchText)) {
                 return true;
             }
         }
