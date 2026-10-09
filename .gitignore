@@ -1,1 +1,3 @@
 *.class
+news.db
+target/
