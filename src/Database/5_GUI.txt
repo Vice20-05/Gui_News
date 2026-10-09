@@ -1,0 +1,118 @@
+================================================================
+ STEP 5 of 5  -  GUI (show the news from the database)
+================================================================
+
+WHERE THIS CODE GOES
+--------------------
+REPLACE the whole file:  src/GUI.java
+(The sample "Sample news story" and "Sample event" items are removed,
+ the real news from the database is shown instead.)
+Main.java does NOT change.
+
+WHAT IT DOES
+------------
+1. Opens the window right away with the text "Loading news...".
+2. In the background: downloads new articles, saves them, reads them all
+   back from news.db.
+3. Puts every article in the list. Clicking one shows its Title,
+   Description, Publish date, Source, Source link and Language.
+
+NEW WORDS / IDEAS IN THIS FILE
+------------------------------
+- Thread:          a second worker that runs at the same time as the window.
+                   The slow downloading happens there, so the window does
+                   not freeze.
+- () -> { ... }:   a "lambda": a short way to write a piece of code that
+                   you hand to someone else to run later.
+- SwingUtilities.invokeLater(...):
+                   Swing rule: ONLY the GUI thread may change the window.
+                   invokeLater means "GUI thread, please run this for me".
+- ContentItems:    the class your NewsEventsPanel already uses for each item.
+                   toContentItem() turns an RssArticle into one.
+
+THE CODE (copy everything between the two dashed lines)
+----------------------------------------------------------------
+import DataHandle.RssArticle;
+import Database.NewsDatabase;
+import Database.RssUpdater;
+
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.util.List;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
+
+public class GUI {
+    // Show the GUI
+    public static void showGUI() {
+        JFrame frame = new JFrame("News and Events");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(new Dimension(800, 600));
+        frame.setLocationRelativeTo(null);
+        frame.add(createContentPanel());
+        frame.setVisible(true);
+    }
+
+    // Display the content panel with the news saved in the database
+    private static JPanel createContentPanel() {
+        NewsEventsPanel panel = new NewsEventsPanel();
+        JLabel statusLabel = new JLabel("Loading news...");
+
+        // Downloading the news takes a few seconds.
+        // If we did it here, the window would freeze until it is done.
+        // So we start a second "worker" thread that does the slow work in the background.
+        Thread worker = new Thread(() -> {
+            try {
+                // 1. Download new articles and save them in news.db.
+                NewsDatabase database = new NewsDatabase();
+                RssUpdater.updateAll("RSS.json", database);
+
+                // 2. Read all articles back from news.db.
+                List<RssArticle> articles = database.loadArticles();
+
+                // 3. Swing rule: only the GUI thread may change the window.
+                //    invokeLater() says: "GUI thread, please run this when you can".
+                SwingUtilities.invokeLater(() -> {
+                    for (RssArticle article : articles) {
+                        panel.addItem(toContentItem(article));
+                    }
+                    statusLabel.setText("News and Events (" + articles.size() + " articles)");
+                });
+
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() ->
+                        statusLabel.setText("Could not load news: " + e.getMessage()));
+            }
+        });
+        worker.start(); // start the worker; the window shows up right away
+
+        JPanel contentPanel = new JPanel(new BorderLayout());
+        contentPanel.add(statusLabel, BorderLayout.NORTH);
+        contentPanel.add(panel, BorderLayout.CENTER);
+        return contentPanel;
+    }
+
+    // Turn one article into the format that NewsEventsPanel knows how to show.
+    private static ContentItems toContentItem(RssArticle article) {
+        String[] fieldNames = {
+                "Title", "Description", "Publish date", "Source", "Source link", "Language"
+        };
+        String[] values = {
+                article.getTitle(),
+                article.getDescription(),
+                article.getPublishDate(),
+                article.getSourceName(),
+                article.getUrl(),
+                article.getLanguage()
+        };
+        return new ContentItems("News", fieldNames, values);
+    }
+}
+----------------------------------------------------------------
+
+CHECK
+-----
+Run Main.java from the project root folder. See "HOW TO RUN AT THE END"
+in 0_START_HERE.txt for what you should see.

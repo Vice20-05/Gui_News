@@ -1,0 +1,85 @@
+================================================================
+ STEP 1 of 5  -  RssArticle (one news article)
+================================================================
+
+WHERE THIS CODE GOES
+--------------------
+REPLACE the whole file:  src/DataHandle/RssArticle.java
+
+WHAT IT DOES
+------------
+A small class that holds ONE article: title, description, link, date,
+language and the name of the website it came from.
+Compared to the old version, it has 2 new fields: language and sourceName.
+
+NEW WORDS / IDEAS IN THIS FILE
+------------------------------
+- private final: the value is set once in the constructor and never changes.
+- getter:        a method like getTitle() that lets other classes READ a value.
+- null:          means "no value". We turn null into "" (empty text) so the
+                 program does not crash later.
+
+THE CODE (copy everything between the two dashed lines)
+----------------------------------------------------------------
+package DataHandle;
+
+// Holds the information of ONE news article.
+// Think of it like a small box with 6 labels on it.
+public class RssArticle {
+    private final String title;        // the headline
+    private final String description;  // a short text about the article
+    private final String url;          // the link to the full article
+    private final String publishDate;  // when it was published
+    private final String language;     // language key, for example "ro-RO" or "hu-HU"
+    private final String sourceName;   // which website it came from, for example "Info Mures"
+
+    // The constructor fills the box when we create a new article.
+    public RssArticle(String title, String description, String url,
+                      String publishDate, String language, String sourceName) {
+        this.title = valueOrEmpty(title);
+        this.description = valueOrEmpty(description);
+        this.url = valueOrEmpty(url);
+        this.publishDate = valueOrEmpty(publishDate);
+        this.language = valueOrEmpty(language);
+        this.sourceName = valueOrEmpty(sourceName);
+    }
+
+    // "Getters" let other classes read the values, but not change them.
+    public String getTitle() {
+        return title;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public String getPublishDate() {
+        return publishDate;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public String getSourceName() {
+        return sourceName;
+    }
+
+    // If a value is missing (null), use an empty text "" instead.
+    // This stops the program from crashing with a NullPointerException later.
+    private String valueOrEmpty(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value;
+    }
+}
+----------------------------------------------------------------
+
+CHECK
+-----
+It should build with no red errors. Nothing to run yet.
