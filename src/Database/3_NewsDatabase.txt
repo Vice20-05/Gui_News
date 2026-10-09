@@ -1,0 +1,183 @@
+================================================================
+ STEP 3 of 5  -  NewsDatabase (SQLite)
+================================================================
+
+WHERE THIS CODE GOES
+--------------------
+NEW FILE:  src/Database/NewsDatabase.java
+
+WHAT IT DOES
+------------
+Saves everything in the SQLite file news.db and reads it back.
+- addSourceIfMissing():  saves a website. If it is already there -> ignored.
+- addArticleIfMissing(): saves an article. If it is already there -> ignored.
+- loadArticles():        reads all saved articles for the GUI.
+
+NEW WORDS / IDEAS IN THIS FILE
+------------------------------
+- SQLite:           a database that is just ONE file (news.db). No server.
+- table:            like an Excel sheet (rows and columns).
+- PRIMARY KEY AUTOINCREMENT:
+                    the id column gets 1, 2, 3... automatically.
+- UNIQUE:           the database refuses 2 rows with the same url.
+- INSERT OR IGNORE: "add this row, but skip it if it breaks UNIQUE".
+                    This is the "if it is already there, ignore it" check.
+- ? placeholders:   filled in with setString()/setInt(). Safer than gluing
+                    text together with +, because it stops SQL injection.
+- ResultSet:        the rows that come back from a SELECT.
+                    next() moves to the next row.
+- try ( ... ):      try-with-resources. Java closes the connection for you.
+
+THE CODE (copy everything between the two dashed lines)
+----------------------------------------------------------------
+package Database;
+
+import DataHandle.RssArticle;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+// Saves websites and articles in the SQLite file "news.db", and reads them back.
+//
+// We use 2 tables (think of 2 Excel sheets):
+//
+//   sources:  id | name       | url
+//             1  | Info Mures | https://stiri.infomures.ro/feed/
+//
+//   articles: id | source_id | source_name | title | description | url | publish_date | language
+//             1  | 1         | Info Mures  | ...   | ...         | ... | ...          | ro-RO
+//
+// source_id tells us which website the article belongs to.
+public class NewsDatabase {
+
+    // The database file. SQLite creates it automatically if it does not exist.
+    private static final String DATABASE_URL = "jdbc:sqlite:news.db";
+
+    // When we create a NewsDatabase, we make sure the tables exist.
+    public NewsDatabase() throws SQLException {
+        createTables();
+    }
+
+    // Open a connection to the database file.
+    private Connection connect() throws SQLException {
+        return DriverManager.getConnection(DATABASE_URL);
+    }
+
+    // Create the 2 tables. "IF NOT EXISTS" means: only if they are not there yet,
+    // so it is safe to run this every time the program starts.
+    // UNIQUE on url means the same website or article can never be saved twice.
+    private void createTables() throws SQLException {
+        String sourcesTable = "CREATE TABLE IF NOT EXISTS sources ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "name TEXT NOT NULL, "
+                + "url TEXT NOT NULL UNIQUE)";
+
+        String articlesTable = "CREATE TABLE IF NOT EXISTS articles ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "source_id INTEGER NOT NULL, "
+                + "source_name TEXT, "
+                + "title TEXT, "
+                + "description TEXT, "
+                + "url TEXT NOT NULL UNIQUE, "
+                + "publish_date TEXT, "
+                + "language TEXT)";
+
+        try (Connection conn = connect();
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sourcesTable);
+            stmt.executeUpdate(articlesTable);
+        }
+    }
+
+    // Save a website. If it is already saved, it is ignored.
+    // Then we look up its id number and return it, so articles can point to it.
+    public int addSourceIfMissing(String name, String url) throws SQLException {
+        // INSERT OR IGNORE = "add it, but if the url already exists, skip it".
+        // The ? marks are filled in with setString(). This is safer than
+        // building the text with + because it stops "SQL injection" attacks.
+        String insertSql = "INSERT OR IGNORE INTO sources (name, url) VALUES (?, ?)";
+        String findIdSql = "SELECT id FROM sources WHERE url = ?";
+
+        try (Connection conn = connect()) {
+            // 1. Try to add the website.
+            try (PreparedStatement insert = conn.prepareStatement(insertSql)) {
+                insert.setString(1, name); // first ?
+                insert.setString(2, url);  // second ?
+                insert.executeUpdate();
+            }
+
+            // 2. Find its id (it is there now, either new or from before).
+            try (PreparedStatement find = conn.prepareStatement(findIdSql)) {
+                find.setString(1, url);
+                try (ResultSet result = find.executeQuery()) {
+                    result.next(); // move to the first (and only) row
+                    return result.getInt("id");
+                }
+            }
+        }
+    }
+
+    // Save one article. Returns true if it was new, false if it was already saved.
+    public boolean addArticleIfMissing(int sourceId, RssArticle article) throws SQLException {
+        // Without a link we cannot tell if it is a duplicate, so we skip it.
+        if (article.getUrl().isEmpty()) {
+            return false;
+        }
+
+        String sql = "INSERT OR IGNORE INTO articles "
+                + "(source_id, source_name, title, description, url, publish_date, language) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, sourceId);
+            stmt.setString(2, article.getSourceName());
+            stmt.setString(3, article.getTitle());
+            stmt.setString(4, article.getDescription());
+            stmt.setString(5, article.getUrl());
+            stmt.setString(6, article.getPublishDate());
+            stmt.setString(7, article.getLanguage());
+
+            int rowsAdded = stmt.executeUpdate(); // 1 = added, 0 = ignored
+            return rowsAdded == 1;
+        }
+    }
+
+    // Read every saved article, newest first ("ORDER BY id DESC").
+    public List<RssArticle> loadArticles() throws SQLException {
+        List<RssArticle> articles = new ArrayList<>();
+        String sql = "SELECT * FROM articles ORDER BY id DESC";
+
+        try (Connection conn = connect();
+             Statement stmt = conn.createStatement();
+             ResultSet rows = stmt.executeQuery(sql)) {
+
+            // rows.next() moves to the next row. It returns false when there are no more.
+            while (rows.next()) {
+                RssArticle article = new RssArticle(
+                        rows.getString("title"),
+                        rows.getString("description"),
+                        rows.getString("url"),
+                        rows.getString("publish_date"),
+                        rows.getString("language"),
+                        rows.getString("source_name")
+                );
+                articles.add(article);
+            }
+        }
+        return articles;
+    }
+}
+----------------------------------------------------------------
+
+CHECK
+-----
+It should build with no red errors. We use it in Step 4.
+Tip: you can open news.db later with the free program
+"DB Browser for SQLite" to see your tables like an Excel sheet.
