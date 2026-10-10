@@ -4,24 +4,26 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.List;
 
+/** Downloads configured feeds and stores new articles in the database. */
 public class RssUpdater {
+    /** Updates every configured RSS source, continuing when one source fails. */
     public static void updateAll(String jsonPath, NewsDatabase database) throws IOException, SQLException {
         JsonReader jsonReader = new JsonReader();
         RssXmlParser parser = new RssXmlParser();
 
-        // 1. Read all the websites from RSS.json.
+        // Read all configured websites.
         List<RssSource> sources = jsonReader.readSources(jsonPath);
 
-        // 2. Do the same steps for every website.
+        // Download and store articles for each website.
         for (RssSource source : sources) {
-            // 2a. Save the website (skipped if it is already saved) and get its id.
+            // Save the source and get its database id.
             int sourceId = database.addSourceIfMissing(source.getName(), source.getUrl());
 
             try {
-                // 2b. Download the articles of this website.
-                List<RssArticle> articles = parser.fetchArticales(source);
+                // Download the articles for this source.
+                List<RssArticle> articles = parser.fetchArticles(source);
 
-                // 2c. Save each article and count how many were new.
+                // Save each article and count newly inserted records.
                 int newCount = 0;
                 for (RssArticle article : articles) {
                     if (database.addArticleIfMissing(sourceId, article)) {

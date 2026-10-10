@@ -1,11 +1,13 @@
 
 import java.util.Objects;
 
+/** Represents one displayable item and its field names and values. */
 public class ContentItems {
     private final String type;
     private final String[] fieldNames;
     private String[] values;
 
+    /** Creates an item after validating and copying its data. */
     public ContentItems(String type, String[] fieldNames, String[] values) {
         this.type = Objects.requireNonNull(type, "type cannot be null");
         this.fieldNames = copyAndNormalize(fieldNames, "fieldNames");
@@ -17,18 +19,22 @@ public class ContentItems {
         }
     }
 
+    /** Returns the item's category, such as News or Event. */
     public String getType() {
         return type;
     }
 
+    /** Returns a defensive copy of the field names. */
     public String[] getFieldNames() {
         return fieldNames.clone();
     }
 
+    /** Returns a defensive copy of the field values. */
     public String[] getValues() {
         return values.clone();
     }
 
+    /** Replaces the values while preserving the field count. */
     public void setValues(String[] values) {
         String[] newValues = copyAndNormalize(values, "values");
         if (newValues.length != fieldNames.length) {
@@ -37,10 +43,12 @@ public class ContentItems {
         this.values = newValues;
     }
 
+    /** Returns the first value, which is treated as the title. */
     public String getTitle() {
         return values[0];
     }
 
+    /** Returns the publish or event date stored in the item. */
     public String getSummary() {
         for (int i = 0; i < fieldNames.length; i++) {
             if (fieldNames[i].equals("Publish date") || fieldNames[i].equals("Event date")) {

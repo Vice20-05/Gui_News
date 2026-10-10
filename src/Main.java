@@ -1,10 +1,11 @@
 
 import javax.swing.SwingUtilities;
-//NO AI
+
+/** Starts the desktop application. */
 public class Main {
 
+    /** Creates the GUI on Swing's event-dispatching thread. */
     public static void main(String[] args) {
-        // Schedule a job for the event-dispatching thread:
-        SwingUtilities.invokeLater(()-> GUI.showGUI());
+        SwingUtilities.invokeLater(() -> GUI.showGUI());
     }
 }
