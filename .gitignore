@@ -1,3 +1,4 @@
 *.class
 news.db
 target/
+/src/Database/
