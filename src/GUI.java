@@ -1,7 +1,9 @@
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -56,7 +58,7 @@ public class GUI {
                     showArticles(panel, articles);
                     statusLabel.setText("News and Events (" + articles.size() + " articles)");
                 });
-            } catch (Exception e) {
+            } catch (IOException | SQLException e) {
                 SwingUtilities.invokeLater(
                         () -> statusLabel.setText("Could not load news: " + e.getMessage())
                 );
