@@ -14,8 +14,10 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
+/** Downloads and safely parses RSS XML documents into article objects. */
 public class RssXmlParser {
-    public List<RssArticle> fetchArticales(RssSource source) throws IOException {
+    /** Downloads one HTTP or HTTPS feed and parses its articles. */
+    public List<RssArticle> fetchArticles(RssSource source) throws IOException {
         if (source == null || source.getUrl() == null || source.getUrl().isBlank()) {
             throw new IOException("RSS source must contain a URL.");
         }
@@ -49,6 +51,13 @@ public class RssXmlParser {
         }
     }
 
+    /** @deprecated use {@link #fetchArticles(RssSource)} */
+    @Deprecated
+    public List<RssArticle> fetchArticales(RssSource source) throws IOException {
+        return fetchArticles(source);
+    }
+
+    /** Parses RSS {@code item} elements from an input stream. */
     public List<RssArticle> parse(InputStream feedText, String sourceName) throws IOException {
         if (feedText == null) {
             throw new IOException("RSS feed input stream cannot be null.");
@@ -72,6 +81,7 @@ public class RssXmlParser {
         return articles;
     }
 
+    /** Creates an XML reader with external entity access disabled. */
     private DocumentBuilder createSafeXmlReader() throws ParserConfigurationException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -85,6 +95,7 @@ public class RssXmlParser {
         return factory.newDocumentBuilder();
     }
 
+    /** Returns the trimmed text of the first matching child element. */
     private String getElementText(Element parent, String tagName) {
         NodeList elements = parent.getElementsByTagName(tagName);
         if (elements.getLength() == 0) {
