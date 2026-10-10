@@ -2,3 +2,5 @@
 news.db
 target/
 /src/Database/
+
+.fake

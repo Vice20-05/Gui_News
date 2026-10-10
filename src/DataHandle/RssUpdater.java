@@ -37,6 +37,9 @@ public class RssUpdater {
                 // Without this try/catch, one broken website would stop everything.
                 System.out.println("Skipped " + source.getName() + ": " + e.getMessage());
             }
+
+            // Write this website's changes to the disk in one go (much faster).
+            database.save();
         }
     }
 }

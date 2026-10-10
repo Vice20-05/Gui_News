@@ -67,6 +67,17 @@ public class NewsEventsPanel extends JPanel {
         filterItems();
     }
 
+    /** Replaces all items in the list with new ones. */
+    public void setItems(List<ContentItems> items) {
+        // Remove the old items first, otherwise every article would show up twice.
+        allItems.clear();
+        allItems.addAll(items);
+
+        // Refresh the list only ONCE at the end.
+        // (Calling addItem() for each article refreshed it every time, which was slow.)
+        filterItems();
+    }
+
     private void filterItems() {
         String searchText = searchField.getText().trim().toLowerCase(Locale.ROOT);
         visibleItems.clear();

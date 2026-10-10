@@ -2,6 +2,7 @@
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.swing.JFrame;
@@ -31,16 +32,28 @@ public class GUI {
     private static JPanel createContentPanel() {
         NewsEventsPanel panel = new NewsEventsPanel();
         JLabel statusLabel = new JLabel("Loading news and events...");
+        // Downloading is slow, so we do it on a separate thread.
+        // That way the window does not freeze while we wait.
         Thread worker = new Thread(() -> {
             try {
                 NewsDatabase database = new NewsDatabase();
-                RssUpdater.updateAll(RSS_CONFIG.toString(), database);
-                List<RssArticle> articles = database.loadArticles();
 
+                // Step 1: show the articles we already saved last time.
+                // This fills the list right away instead of leaving it empty.
+                List<RssArticle> savedArticles = database.loadArticles();
                 SwingUtilities.invokeLater(() -> {
-                    for (RssArticle article : articles) {
-                        panel.addItem(toContentItem(article));
-                    }
+                    showArticles(panel, savedArticles);
+                    statusLabel.setText("Showing " + savedArticles.size()
+                            + " saved articles, downloading new ones...");
+                });
+
+                // Step 2: download new articles from every website (this takes a while).
+                RssUpdater.updateAll(RSS_CONFIG.toString(), database);
+
+                // Step 3: load everything again, so the new articles appear too.
+                List<RssArticle> articles = database.loadArticles();
+                SwingUtilities.invokeLater(() -> {
+                    showArticles(panel, articles);
                     statusLabel.setText("News and Events (" + articles.size() + " articles)");
                 });
             } catch (Exception e) {
@@ -55,6 +68,16 @@ public class GUI {
         contentPanel.add(statusLabel, BorderLayout.NORTH);
         contentPanel.add(panel, BorderLayout.CENTER);
         return contentPanel;
+    }
+
+    /** Replaces the list in the panel with the given articles. */
+    private static void showArticles(NewsEventsPanel panel, List<RssArticle> articles) {
+        // Turn every article into an item the panel understands.
+        List<ContentItems> items = new ArrayList<>();
+        for (RssArticle article : articles) {
+            items.add(toContentItem(article));
+        }
+        panel.setItems(items);
     }
 
     /** Converts a stored RSS article into the generic item used by the UI. */
