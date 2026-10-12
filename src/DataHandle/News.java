@@ -72,7 +72,7 @@ public class News {
 
     /** Sets the cover image, falling back to the default image when it is empty. */
     public void setCoverImage(String coverImage) {
-        if (coverImage == null || coverImage.isEmpty()) {
+        if (coverImage == null || coverImage.isBlank()) {
             coverImage = DEFAULT_COVER_IMAGE;
         }
         this.coverImage = coverImage;

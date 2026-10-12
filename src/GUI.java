@@ -52,7 +52,7 @@ public class GUI {
         loadSavedNews();
     }
 
-    /** Shows the news already saved in SQLite, without going online. */
+    /** Shows saved news first, then refreshes it from the configured RSS feeds. */
     private static void loadSavedNews() {
         panel.setLoading(true);
         panel.setStatus("Loading saved news...");
@@ -72,13 +72,12 @@ public class GUI {
                     // get() returns what doInBackground() returned, or throws its error.
                     List<News> news = get();
                     panel.setNews(news);
-                    if (news.isEmpty()) {
-                        // First start: nothing saved yet, so download the feeds right away.
-                        refresh();
-                    } else {
-                        panel.setStatus(news.size() + " saved news. Press Refresh to download new ones.");
-                    }
+                    // Refresh on every start so existing installations receive new articles too.
+                    refresh();
                 } catch (InterruptedException | ExecutionException e) {
+                    if (e instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
                     panel.setStatus("Could not load saved news: " + rootMessage(e));
                 }
             }
@@ -118,6 +117,9 @@ public class GUI {
                                 + String.join(", ", problems));
                     }
                 } catch (InterruptedException | ExecutionException e) {
+                    if (e instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
                     panel.setStatus("Refresh failed: " + rootMessage(e));
                 }
             }
@@ -218,6 +220,7 @@ public class GUI {
     /** Returns the message of the original exception thrown in the background thread. */
     private static String rootMessage(Exception e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        return cause.getMessage();
+        String message = cause.getMessage();
+        return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
     }
 }
