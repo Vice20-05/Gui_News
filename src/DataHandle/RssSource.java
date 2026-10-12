@@ -2,6 +2,7 @@ package DataHandle;
 
 /** Holds the name and URL of one RSS feed from the JSON configuration. */
 public class RssSource {
+    // Gson fills these fields from the JSON keys with the same names ("name", "url").
     private String name;
     private String url;
 

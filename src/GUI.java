@@ -16,13 +16,17 @@ import DataHandle.RssUpdater;
 
 /** Builds the main window, shows saved news, and refreshes RSS feeds on demand. */
 public class GUI {
+    // The JSON file with the list of RSS feeds to download.
     private static final Path RSS_CONFIG = Path.of("RSS.json");
 
+    // Created once in showGUI() and shared by all the methods below.
     private static NewsDatabase database;
     private static NewsEventsPanel panel;
+    private static JFrame frame;
 
     /** Creates and displays the application window. */
     public static void showGUI() {
+        // Without a database the app can't do anything, so show an error and stop.
         try {
             database = new NewsDatabase();
         } catch (SQLException e) {
@@ -31,10 +35,12 @@ public class GUI {
             return;
         }
 
+        // Tell the panel which method each button should call.
         panel = new NewsEventsPanel();
         panel.onRefresh(GUI::refresh);
+        panel.onClearDb(GUI::clearDatabase);
 
-        JFrame frame = new JFrame("News and Events");
+        frame = new JFrame("News and Events");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(new Dimension(1000, 650));
         frame.setLocationRelativeTo(null);
@@ -50,15 +56,18 @@ public class GUI {
         panel.setStatus("Loading saved news...");
 
         new SwingWorker<List<RssArticle>, Void>() {
+            // Runs on a background thread, so reading the database doesn't freeze the window.
             @Override
             protected List<RssArticle> doInBackground() throws Exception {
                 return database.loadArticles();
             }
 
+            // Runs back on the Swing thread when the work is finished, so it can update the UI.
             @Override
             protected void done() {
                 panel.setLoading(false);
                 try {
+                    // get() returns what doInBackground() returned, or throws its error.
                     List<RssArticle> articles = get();
                     showArticles(articles);
                     if (articles.isEmpty()) {
@@ -81,9 +90,13 @@ public class GUI {
 
         // Download RSS feeds in the background to keep the Swing UI responsive.
         new SwingWorker<List<RssArticle>, Void>() {
+            // Messages about feeds that failed, filled in by the background work.
+            private List<String> problems;
+
             @Override
             protected List<RssArticle> doInBackground() throws Exception {
-                RssUpdater.updateAll(RSS_CONFIG.toString(), database);
+                // Download all feeds, save the new articles, then read the full list back.
+                problems = RssUpdater.updateAll(RSS_CONFIG.toString(), database);
                 return database.loadArticles();
             }
 
@@ -93,12 +106,40 @@ public class GUI {
                 try {
                     List<RssArticle> articles = get();
                     showArticles(articles);
-                    panel.setStatus("Refreshed: " + articles.size() + " articles.");
+                    if (problems.isEmpty()) {
+                        panel.setStatus("Refreshed: " + articles.size() + " articles.");
+                    } else {
+                        // Show which feeds failed and why (for example "Punctul: 403 Forbidden").
+                        panel.setStatus("Refreshed: " + articles.size() + " articles. Failed: "
+                                + String.join(", ", problems));
+                    }
                 } catch (InterruptedException | ExecutionException e) {
                     panel.setStatus("Refresh failed: " + rootMessage(e));
                 }
             }
         }.execute();
+    }
+
+    /** Deletes all news from the database after the user confirms. */
+    private static void clearDatabase() {
+        int result = JOptionPane.showConfirmDialog(
+                frame,
+                "Are you sure? This deletes all saved news.",
+                "Clear database",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        if (result != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        try {
+            database.clearAll();
+            showArticles(List.of());
+            panel.setStatus("Database cleared. Press Refresh to download the news again.");
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(frame, "Could not clear the database: " + e.getMessage(),
+                    "Database error", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     /** Replaces the list in the panel with the given articles. */

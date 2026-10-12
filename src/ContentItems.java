@@ -4,6 +4,7 @@ import java.util.Objects;
 /** Represents one displayable item and its field names and values. */
 public class ContentItems {
     private final String type;
+    // fieldNames[i] is the label for values[i], for example "Title" -> "Some headline".
     private final String[] fieldNames;
     private String[] values;
 
@@ -68,11 +69,13 @@ public class ContentItems {
         return "";
     }
 
+    /** The text shown for this item in the list on the left. */
     @Override
     public String toString() {
         return type + "  |  " + getTitle();
     }
 
+    /** Copies the array so outside code can't change it, and turns null values into "". */
     private String[] copyAndNormalize(String[] source, String name) {
         Objects.requireNonNull(source, name + " cannot be null");
         String[] copy = source.clone();

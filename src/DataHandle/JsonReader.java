@@ -34,6 +34,7 @@ public class JsonReader {
                 throw new IOException("Could not read RSS sources from: " + filePath);
             }
 
+            // Every source needs a name and a URL, otherwise we can't download it.
             for (int i = 0; i < sources.size(); i++) {
                 RssSource source = sources.get(i);
                 if (source == null
@@ -47,10 +48,12 @@ public class JsonReader {
 
             return sources;
         } catch (JsonParseException | IllegalStateException e) {
+            // Gson throws these when the file is not valid JSON or has the wrong shape.
             throw new IOException("Invalid RSS source JSON file: " + filePath, e);
         }
     }
 
+    /** Returns true if the text is missing or only contains spaces. */
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
