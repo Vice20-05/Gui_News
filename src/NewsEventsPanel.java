@@ -1,4 +1,5 @@
 import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -18,11 +19,13 @@ import javax.swing.event.DocumentListener;
 
 /** Displays items in a searchable list with a details panel. */
 public class NewsEventsPanel extends JPanel {
+    // allItems holds every article; visibleItems only the ones that match the search.
     private final List<ContentItems> allItems = new ArrayList<>();
     private final DefaultListModel<ContentItems> visibleItems = new DefaultListModel<>();
     private final JList<ContentItems> itemList = new JList<>(visibleItems);
     private final JTextField searchField = new JTextField();
     private final JButton refreshButton = new JButton("Refresh");
+    private final JButton clearDbButton = new JButton("Clear DB");
     private final JLabel statusLabel = new JLabel(" ");
     private final JProgressBar loadingBar = new JProgressBar();
     private final JPanel detailsPanel = new JPanel(new BorderLayout(12, 12));
@@ -32,7 +35,9 @@ public class NewsEventsPanel extends JPanel {
         setLayout(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
+        // Show the details whenever the user clicks a different item.
         itemList.addListSelectionListener(event -> {
+            // Skip the extra events Swing sends while the mouse button is still held down.
             if (!event.getValueIsAdjusting()) {
                 showDetails(itemList.getSelectedValue());
             }
@@ -70,16 +75,24 @@ public class NewsEventsPanel extends JPanel {
         splitPane.setResizeWeight(1.0 / 3.0);
         splitPane.setDividerLocation(1.0 / 3.0);
 
-        // Bottom bar: status text and a progress bar that only shows while loading.
+        // Button bar under the list and details.
+        JPanel buttonBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        buttonBar.add(clearDbButton);
+
+        // Status bar: status text and a progress bar that only shows while loading.
         loadingBar.setIndeterminate(true);
         loadingBar.setVisible(false);
         JPanel statusBar = new JPanel(new BorderLayout(8, 8));
         statusBar.add(statusLabel, BorderLayout.CENTER);
         statusBar.add(loadingBar, BorderLayout.EAST);
 
+        JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
+        bottomPanel.add(buttonBar, BorderLayout.NORTH);
+        bottomPanel.add(statusBar, BorderLayout.SOUTH);
+
         add(topBar, BorderLayout.NORTH);
         add(splitPane, BorderLayout.CENTER);
-        add(statusBar, BorderLayout.SOUTH);
+        add(bottomPanel, BorderLayout.SOUTH);
     }
 
     /** Runs the given action when the Refresh button is clicked. */
@@ -87,10 +100,17 @@ public class NewsEventsPanel extends JPanel {
         refreshButton.addActionListener(event -> action.run());
     }
 
-    /** Shows or hides the loading state and blocks the Refresh button while loading. */
+    /** Runs the given action when the Clear DB button is clicked. */
+    public void onClearDb(Runnable action) {
+        clearDbButton.addActionListener(event -> action.run());
+    }
+
+    /** Shows or hides the loading state and blocks the buttons while loading. */
     public void setLoading(boolean loading) {
         loadingBar.setVisible(loading);
         refreshButton.setEnabled(!loading);
+        // Clearing the database while a refresh is writing to it would mix up the data.
+        clearDbButton.setEnabled(!loading);
         revalidate();
     }
 
@@ -119,6 +139,7 @@ public class NewsEventsPanel extends JPanel {
         filterItems();
     }
 
+    /** Rebuilds the visible list from allItems, keeping only the items that match the search. */
     private void filterItems() {
         String searchText = searchField.getText().trim().toLowerCase(Locale.ROOT);
         visibleItems.clear();
@@ -129,6 +150,7 @@ public class NewsEventsPanel extends JPanel {
             }
         }
 
+        // Select the first result so the details panel is never empty when there are results.
         if (!visibleItems.isEmpty()) {
             itemList.setSelectedIndex(0);
         } else {
@@ -146,7 +168,9 @@ public class NewsEventsPanel extends JPanel {
         return title.contains(searchText) || description.contains(searchText);
     }
 
+    /** Shows all fields of the item on the right side, or a hint when nothing is selected. */
     private void showDetails(ContentItems item) {
+        // Remove the old details before adding the new ones.
         detailsPanel.removeAll();
 
         JTextArea details = new JTextArea();
@@ -171,6 +195,7 @@ public class NewsEventsPanel extends JPanel {
         }
 
         detailsPanel.add(new JScrollPane(details), BorderLayout.CENTER);
+        // Tell Swing the panel changed, so it lays it out and draws it again.
         detailsPanel.revalidate();
         detailsPanel.repaint();
     }

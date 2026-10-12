@@ -50,7 +50,7 @@ public class RssArticle {
         return sourceName;
     }
 
-
+    /** Returns an empty string instead of null, so the rest of the code never sees null. */
     private String valueOrEmpty(String value) {
         return value == null ? "" : value;
     }
