@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Downloads configured feeds and stores new articles in the database. */
+/** Downloads configured feeds and stores new news items in the database. */
 public class RssUpdater {
     /**
      * Updates every configured RSS source, continuing when one source fails.
@@ -19,12 +19,8 @@ public class RssUpdater {
         // Read all configured websites.
         List<RssSource> sources = jsonReader.readSources(jsonPath);
 
-        // Download and store articles for each website.
+        // Download and store news for each website.
         for (RssSource source : sources) {
-            // Save the source and get its database id.
-            int sourceId = database.addSourceIfMissing(source.getName(), source.getUrl());
-            database.fillMissingLanguage(source.getName(), source.getLanguage());
-
             // Step 1: ask the server for the status code before downloading anything.
             String feedUrl = source.getUrl();
             int status = HttpHelper.getStatusCode(feedUrl);
@@ -48,13 +44,13 @@ public class RssUpdater {
             }
 
             try {
-                // Download the articles for this source.
-                List<RssArticle> articles = parser.fetchArticles(feedUrl, source.getName(), source.getLanguage());
+                // Download the news for this source.
+                List<News> newsList = parser.fetchNews(feedUrl, source.getName(), source.getLanguage());
 
-                // Save each article and count newly inserted records.
+                // Save each item; addNews() ignores the ones we already have.
                 int newCount = 0;
-                for (RssArticle article : articles) {
-                    if (database.addArticleIfMissing(sourceId, article)) {
+                for (News news : newsList) {
+                    if (database.addNews(news)) {
                         newCount++;
                     }
                 }
@@ -71,13 +67,5 @@ public class RssUpdater {
             database.save();
         }
         return problems;
-    }
-
-    /** Sets the language of saved articles that were stored before sources had a language. */
-    public static void fillMissingLanguages(String jsonPath, NewsDatabase database) throws IOException, SQLException {
-        for (RssSource source : new JsonReader().readSources(jsonPath)) {
-            database.fillMissingLanguage(source.getName(), source.getLanguage());
-        }
-        database.save();
     }
 }

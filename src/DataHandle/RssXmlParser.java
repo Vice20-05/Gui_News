@@ -4,6 +4,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLConnection;
+import java.sql.Timestamp;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.xml.XMLConstants;
@@ -14,18 +18,10 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-/** Downloads and safely parses RSS XML documents into article objects. */
+/** Downloads and safely parses RSS XML documents into News objects. */
 public class RssXmlParser {
-    /** Downloads one HTTP or HTTPS feed and parses its articles. */
-    public List<RssArticle> fetchArticles(RssSource source) throws IOException {
-        if (source == null || source.getUrl() == null || source.getUrl().isBlank()) {
-            throw new IOException("RSS source must contain a URL.");
-        }
-        return fetchArticles(source.getUrl(), source.getName(), source.getLanguage());
-    }
-
-    /** Downloads the feed from the given URL (for example after a redirect) and parses its articles. */
-    public List<RssArticle> fetchArticles(String feedUrl, String sourceName, String language) throws IOException {
+    /** Downloads the feed from the given URL (for example after a redirect) and parses its news. */
+    public List<News> fetchNews(String feedUrl, String sourceName, String language) throws IOException {
         // Check that the text is a real web address before trying to connect.
         URI uri;
         try {
@@ -59,38 +55,63 @@ public class RssXmlParser {
         }
     }
 
-    /** @deprecated use {@link #fetchArticles(RssSource)} */
-    @Deprecated
-    public List<RssArticle> fetchArticales(RssSource source) throws IOException {
-        return fetchArticles(source);
-    }
-
     /** Parses RSS {@code item} elements from an input stream. */
-    public List<RssArticle> parse(InputStream feedText, String sourceName, String language) throws IOException {
+    public List<News> parse(InputStream feedText, String sourceName, String language) throws IOException {
         if (feedText == null) {
             throw new IOException("RSS feed input stream cannot be null.");
         }
 
-        List<RssArticle> articles = new ArrayList<>();
+        List<News> newsList = new ArrayList<>();
         try {
             Document document = createSafeXmlReader().parse(feedText);
+
+            // The publisher is the feed's own name, from <channel><title>.
+            String publisher = sourceName;
+            NodeList channels = document.getElementsByTagName("channel");
+            if (channels.getLength() > 0) {
+                String channelTitle = getElementText((Element) channels.item(0), "title");
+                if (!channelTitle.isEmpty()) {
+                    publisher = HtmlText.toPlainText(channelTitle);
+                }
+            }
 
             // Every news article in an RSS feed is inside an <item> tag.
             NodeList items = document.getElementsByTagName("item");
             for (int i = 0; i < items.getLength(); i++) {
                 Element item = (Element) items.item(i);
                 // Read the tags we need; a missing tag just gives an empty string.
-                String title = getElementText(item, "title");
-                String description = getElementText(item, "description");
+                // RSS feeds often contain HTML (<p>, &#8230;), so we keep only the plain text.
+                String title = HtmlText.toPlainText(getElementText(item, "title"));
+                String description = HtmlText.toPlainText(getElementText(item, "description"));
                 String url = getElementText(item, "link");
-                String publishDate = getElementText(item, "pubDate");
-                articles.add(new RssArticle(title, description, url, publishDate, language, sourceName));
+                Timestamp publishDate = parseDate(getElementText(item, "pubDate"));
+
+                // WordPress feeds put the author in <dc:creator> instead of <author>.
+                String author = getElementText(item, "author");
+                if (author.isEmpty()) {
+                    author = getElementText(item, "dc:creator");
+                }
+
+                // Creation and last modified dates are set by the database when the item is saved.
+                newsList.add(new News(title, description, sourceName, author, publisher,
+                        publishDate, url, null, null, language, null));
             }
         } catch (Exception e) {
             // Broken XML ends up here, so one bad feed doesn't crash the program.
             throw new IOException("Error parsing RSS feed: " + e.getMessage(), e);
         }
-        return articles;
+        return newsList;
+    }
+
+    /** Turns an RSS date like "Mon, 20 Oct 2026 18:30:00 +0000" into a Timestamp, or null if it is invalid. */
+    private Timestamp parseDate(String text) {
+        try {
+            ZonedDateTime date = ZonedDateTime.parse(text, DateTimeFormatter.RFC_1123_DATE_TIME);
+            return Timestamp.from(date.toInstant());
+        } catch (DateTimeParseException e) {
+            // A wrong or missing date should not stop the whole feed.
+            return null;
+        }
     }
 
     /** Creates an XML reader with external entity access disabled. */

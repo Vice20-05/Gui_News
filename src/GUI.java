@@ -1,9 +1,7 @@
 
 import java.awt.Dimension;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -11,18 +9,18 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingWorker;
 
+import DataHandle.News;
 import DataHandle.NewsDatabase;
-import DataHandle.RssArticle;
 import DataHandle.RssUpdater;
 
-/** Builds the main window, shows saved news, and refreshes RSS feeds on demand. */
+/** Builds the main window and connects every button to the database. */
 public class GUI {
     // The JSON file with the list of RSS feeds to download.
-    private static final Path RSS_CONFIG = Path.of("RSS.json");
+    private static final Path RSS_CONFIG = Path.of("res", "rss.json");
 
     // Created once in showGUI() and shared by all the methods below.
     private static NewsDatabase database;
-    private static NewsEventsPanel panel;
+    private static NewsPanel panel;
     private static JFrame frame;
 
     /** Creates and displays the application window. */
@@ -37,37 +35,33 @@ public class GUI {
         }
 
         // Tell the panel which method each button should call.
-        panel = new NewsEventsPanel();
+        panel = new NewsPanel();
         panel.onRefresh(GUI::refresh);
+        panel.onAdd(GUI::addNews);
+        panel.onEdit(GUI::editNews);
+        panel.onDelete(GUI::deleteNews);
         panel.onClearDb(GUI::clearDatabase);
 
-        frame = new JFrame("News and Events");
+        frame = new JFrame("News Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(new Dimension(1000, 650));
         frame.setLocationRelativeTo(null);
         frame.add(panel);
         frame.setVisible(true);
 
-        loadSavedArticles();
+        loadSavedNews();
     }
 
-    /** Shows the articles already saved in SQLite, without going online. */
-    private static void loadSavedArticles() {
+    /** Shows the news already saved in SQLite, without going online. */
+    private static void loadSavedNews() {
         panel.setLoading(true);
         panel.setStatus("Loading saved news...");
 
-        new SwingWorker<List<RssArticle>, Void>() {
+        new SwingWorker<List<News>, Void>() {
             // Runs on a background thread, so reading the database doesn't freeze the window.
             @Override
-            protected List<RssArticle> doInBackground() throws Exception {
-                try {
-                    // Older saved articles have no language, so take it from RSS.json.
-                    RssUpdater.fillMissingLanguages(RSS_CONFIG.toString(), database);
-                } catch (IOException e) {
-                    // Without RSS.json we can still show the saved news.
-                    System.out.println("Could not read languages from RSS.json: " + e.getMessage());
-                }
-                return database.loadArticles();
+            protected List<News> doInBackground() throws Exception {
+                return database.getAllNews();
             }
 
             // Runs back on the Swing thread when the work is finished, so it can update the UI.
@@ -76,13 +70,13 @@ public class GUI {
                 panel.setLoading(false);
                 try {
                     // get() returns what doInBackground() returned, or throws its error.
-                    List<RssArticle> articles = get();
-                    showArticles(articles);
-                    if (articles.isEmpty()) {
+                    List<News> news = get();
+                    panel.setNews(news);
+                    if (news.isEmpty()) {
                         // First start: nothing saved yet, so download the feeds right away.
                         refresh();
                     } else {
-                        panel.setStatus(articles.size() + " saved articles. Press Refresh to download new ones.");
+                        panel.setStatus(news.size() + " saved news. Press Refresh to download new ones.");
                     }
                 } catch (InterruptedException | ExecutionException e) {
                     panel.setStatus("Could not load saved news: " + rootMessage(e));
@@ -91,22 +85,22 @@ public class GUI {
         }.execute();
     }
 
-    /** Downloads every RSS feed, saves new articles, and reloads the list. */
+    /** Downloads every RSS feed, saves new news, and reloads the list. */
     private static void refresh() {
         panel.setLoading(true);
         panel.setStatus("Downloading news from RSS feeds...");
 
         // Download RSS feeds in the background to keep the Swing UI responsive.
-        new SwingWorker<List<RssArticle>, Void>() {
+        new SwingWorker<List<News>, Void>() {
             // Messages about feeds that failed, filled in by the background work.
             private List<String> problems;
 
             // Runs on a background thread, so downloading doesn't freeze the window.
             @Override
-            protected List<RssArticle> doInBackground() throws Exception {
-                // Download all feeds, save the new articles, then read the full list back.
+            protected List<News> doInBackground() throws Exception {
+                // Download all feeds, save the new news, then read the full list back.
                 problems = RssUpdater.updateAll(RSS_CONFIG.toString(), database);
-                return database.loadArticles();
+                return database.getAllNews();
             }
 
             // Runs back on the Swing thread to show the result.
@@ -114,13 +108,13 @@ public class GUI {
             protected void done() {
                 panel.setLoading(false);
                 try {
-                    List<RssArticle> articles = get();
-                    showArticles(articles);
+                    List<News> news = get();
+                    panel.setNews(news);
                     if (problems.isEmpty()) {
-                        panel.setStatus("Refreshed: " + articles.size() + " articles.");
+                        panel.setStatus("Refreshed: " + news.size() + " news.");
                     } else {
                         // Show which feeds failed and why (for example "Punctul: 403 Forbidden").
-                        panel.setStatus("Refreshed: " + articles.size() + " articles. Failed: "
+                        panel.setStatus("Refreshed: " + news.size() + " news. Failed: "
                                 + String.join(", ", problems));
                     }
                 } catch (InterruptedException | ExecutionException e) {
@@ -128,6 +122,65 @@ public class GUI {
                 }
             }
         }.execute();
+    }
+
+    /** Add button: asks for the data of a new news item and saves it. */
+    private static void addNews() {
+        News news = NewsForm.show(frame, null);
+        if (news == null) {
+            return; // the user pressed Cancel
+        }
+        try {
+            if (!database.addNews(news)) {
+                showError("A news item with this source and URL already exists.");
+                return;
+            }
+            database.save();
+            reloadList("News added.");
+        } catch (SQLException e) {
+            showError("Could not add the news: " + e.getMessage());
+        }
+    }
+
+    /** Edit button: lets the user change the selected news item and saves the changes. */
+    private static void editNews() {
+        News selected = panel.getSelectedNews();
+        if (selected == null) {
+            showError("Select a news item first.");
+            return;
+        }
+        News changed = NewsForm.show(frame, selected);
+        if (changed == null) {
+            return; // the user pressed Cancel
+        }
+        try {
+            database.updateNews(changed);
+            database.save();
+            reloadList("News updated.");
+        } catch (SQLException e) {
+            showError("Could not update the news: " + e.getMessage());
+        }
+    }
+
+    /** Delete button: removes the selected news item after the user confirms. */
+    private static void deleteNews() {
+        News selected = panel.getSelectedNews();
+        if (selected == null) {
+            showError("Select a news item first.");
+            return;
+        }
+        int result = JOptionPane.showConfirmDialog(frame,
+                "Delete \"" + selected.getTitle() + "\"?", "Delete news", JOptionPane.YES_NO_OPTION);
+        if (result != JOptionPane.YES_OPTION) {
+            return;
+        }
+        try {
+            database.deleteNews(selected.getSource(), selected.getUrl());
+            database.save();
+            reloadList("News deleted.");
+        } catch (SQLException e) {
+            showError("Could not delete the news: " + e.getMessage());
+        }
     }
 
     /** Deletes all news from the database after the user confirms. */
@@ -144,39 +197,22 @@ public class GUI {
 
         try {
             database.clearAll();
-            showArticles(List.of());
+            panel.setNews(List.of());
             panel.setStatus("Database cleared. Press Refresh to download the news again.");
         } catch (SQLException e) {
-            JOptionPane.showMessageDialog(frame, "Could not clear the database: " + e.getMessage(),
-                    "Database error", JOptionPane.ERROR_MESSAGE);
+            showError("Could not clear the database: " + e.getMessage());
         }
     }
 
-    /** Replaces the list in the panel with the given articles. */
-    private static void showArticles(List<RssArticle> articles) {
-        // Turn every article into an item the panel understands.
-        List<ContentItems> items = new ArrayList<>();
-        for (RssArticle article : articles) {
-            items.add(toContentItem(article));
-        }
-        panel.setItems(items);
+    /** Reads all news from the database again and shows them with a status message. */
+    private static void reloadList(String status) throws SQLException {
+        panel.setNews(database.getAllNews());
+        panel.setStatus(status);
     }
 
-    /** Converts a stored RSS article into the generic item used by the UI. */
-    private static ContentItems toContentItem(RssArticle article) {
-        String[] fieldNames = {
-                "Title", "Description", "Publish date", "Source", "Source link", "Language", "Cover image"
-        };
-        String[] values = {
-                article.getTitle(),
-                article.getDescription(),
-                article.getPublishDate(),
-                article.getSourceName(),
-                article.getUrl(),
-                article.getLanguage(),
-                article.getCoverImage()
-        };
-        return new ContentItems("News", fieldNames, values);
+    /** Shows an error message in a pop-up. */
+    private static void showError(String message) {
+        JOptionPane.showMessageDialog(frame, message, "Error", JOptionPane.ERROR_MESSAGE);
     }
 
     /** Returns the message of the original exception thrown in the background thread. */

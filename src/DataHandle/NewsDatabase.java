@@ -6,10 +6,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Saves and loads RSS sources and articles in the local SQLite database (news.db). */
+/** All database work: creates the news table and does Add, Read, Update and Delete on it. */
 public class NewsDatabase {
     // The database is the news.db file in the folder the program is started from.
     private static final String DATABASE_URL = "jdbc:sqlite:news.db";
@@ -18,10 +19,10 @@ public class NewsDatabase {
     // Opening a new connection for every single article was very slow.
     private final Connection connection;
 
-    /** Opens the database file (creating it if needed) and makes sure the tables exist. */
+    /** Opens the database file (creating it if needed) and makes sure the table exists. */
     public NewsDatabase() throws SQLException {
         connection = DriverManager.getConnection(DATABASE_URL);
-        createTables();
+        createTable();
 
         // By default SQLite writes to the disk after EVERY insert, which is slow.
         // With auto-commit off, changes are collected and written all at once
@@ -34,151 +35,163 @@ public class NewsDatabase {
         connection.commit();
     }
 
-    /** Deletes every article and source from the database. */
-    public void clearAll() throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate("DELETE FROM articles");
-            statement.executeUpdate("DELETE FROM sources");
-            save();
-        } catch (SQLException e) {
-            // Undo a half-finished delete, so we never end up with only one table cleared.
-            connection.rollback();
-            throw e;
-        }
-    }
-
-    /** Creates the sources and articles tables the first time the program runs. */
-    private void createTables() throws SQLException {
-        // "IF NOT EXISTS" means nothing happens when the tables are already there.
-        String sourcesTable = """
-                CREATE TABLE IF NOT EXISTS sources (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    url TEXT NOT NULL UNIQUE
-                )
-                """;
-        String articlesTable = """
-                CREATE TABLE IF NOT EXISTS articles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    source_id INTEGER NOT NULL,
-                    source_name TEXT,
-                    title TEXT,
+    /** Creates the news table the first time the program runs. */
+    private void createTable() throws SQLException {
+        // The primary key is made of two columns: source + url.
+        // The same article (same url from the same source) can only be saved once,
+        // so this also stops duplicates when we refresh the feeds.
+        String newsTable = """
+                CREATE TABLE IF NOT EXISTS news (
+                    title TEXT NOT NULL,
                     description TEXT,
-                    url TEXT NOT NULL UNIQUE,
-                    publish_date TEXT,
-                    language TEXT,
-                    cover_image TEXT
+                    source TEXT NOT NULL,
+                    author TEXT,
+                    publisher TEXT,
+                    publish_date TIMESTAMP,
+                    url TEXT NOT NULL,
+                    creation_date TIMESTAMP NOT NULL,
+                    last_modified_date TIMESTAMP NOT NULL,
+                    language TEXT NOT NULL,
+                    cover_image TEXT,
+                    PRIMARY KEY (source, url)
                 )
                 """;
-
         try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate(sourcesTable);
-            statement.executeUpdate(articlesTable);
-        }
-        addCoverImageColumnIfMissing();
-    }
-
-    /** Adds the cover_image column to databases created before the column existed. */
-    private void addCoverImageColumnIfMissing() throws SQLException {
-        try (Statement statement = connection.createStatement();
-             ResultSet columns = statement.executeQuery("PRAGMA table_info(articles)")) {
-            while (columns.next()) {
-                if (columns.getString("name").equals("cover_image")) {
-                    return;
-                }
-            }
-        }
-        try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate("ALTER TABLE articles ADD COLUMN cover_image TEXT");
+            statement.executeUpdate(newsTable);
         }
     }
 
-    /** Saves an RSS source if it is not saved yet, and returns its id. */
-    public int addSourceIfMissing(String name, String url) throws SQLException {
-        // "OR IGNORE" skips the insert when a source with this URL already exists.
-        String insertSql = "INSERT OR IGNORE INTO sources (name, url) VALUES (?, ?)";
-        String findIdSql = "SELECT id FROM sources WHERE url = ?";
-
-        try (PreparedStatement insert = connection.prepareStatement(insertSql);
-             PreparedStatement find = connection.prepareStatement(findIdSql)) {
-            // The ? marks are filled in here, which keeps the SQL safe from odd characters.
-            insert.setString(1, name);
-            insert.setString(2, url);
-            insert.executeUpdate();
-
-            // Look up the id, both for a new source and for one that was already there.
-            find.setString(1, url);
-            try (ResultSet result = find.executeQuery()) {
-                if (!result.next()) {
-                    throw new SQLException("Could not find RSS source after saving it.");
-                }
-                return result.getInt("id");
-            }
-        }
-    }
-
-    /** Saves an article if its URL is not in the database yet. Returns true if it was new. */
-    public boolean addArticleIfMissing(int sourceId, RssArticle article) throws SQLException {
-        // An article without a link can't be checked for duplicates, so we skip it.
-        if (article == null || article.getUrl().isEmpty()) {
-            return false;
-        }
-
-        // The url column is UNIQUE, so "OR IGNORE" skips articles we already have.
+    /** CREATE: saves a news item if it is not saved yet. Returns true if it was new. */
+    public boolean addNews(News news) throws SQLException {
+        // "OR IGNORE" skips the insert when the (source, url) key already exists.
         String sql = """
-                INSERT OR IGNORE INTO articles
-                (source_id, source_name, title, description, url, publish_date, language, cover_image)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO news
+                (title, description, source, author, publisher, publish_date, url,
+                 creation_date, last_modified_date, language, cover_image)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
-
+        Timestamp now = now();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, sourceId);
-            statement.setString(2, article.getSourceName());
-            statement.setString(3, article.getTitle());
-            statement.setString(4, article.getDescription());
-            statement.setString(5, article.getUrl());
-            statement.setString(6, article.getPublishDate());
-            statement.setString(7, article.getLanguage());
-            statement.setString(8, article.getCoverImage());
+            // The ? marks are filled in here, which keeps the SQL safe from odd characters.
+            statement.setString(1, news.getTitle());
+            statement.setString(2, news.getDescription());
+            statement.setString(3, news.getSource());
+            statement.setString(4, news.getAuthor());
+            statement.setString(5, news.getPublisher());
+            statement.setString(6, toText(news.getPublishDate()));
+            statement.setString(7, news.getUrl());
+            statement.setString(8, toText(now));
+            statement.setString(9, toText(now));
+            statement.setString(10, news.getLanguage());
+            statement.setString(11, news.getCoverImage());
             // executeUpdate returns how many rows were inserted: 1 if new, 0 if ignored.
             return statement.executeUpdate() == 1;
         }
     }
 
-    /** Sets the language of this source's articles that don't have one yet. */
-    public void fillMissingLanguage(String sourceName, String language) throws SQLException {
-        if (language == null || language.isEmpty()) {
-            return;
-        }
-        String sql = "UPDATE articles SET language = ? WHERE source_name = ? AND (language IS NULL OR language = '')";
+    /** READ: returns one news item by its key, or null if it doesn't exist. */
+    public News getNews(String source, String url) throws SQLException {
+        String sql = "SELECT * FROM news WHERE source = ? AND url = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, language);
-            statement.setString(2, sourceName);
+            statement.setString(1, source);
+            statement.setString(2, url);
+            try (ResultSet row = statement.executeQuery()) {
+                return row.next() ? readNews(row) : null;
+            }
+        }
+    }
+
+    /** READ: returns every saved news item, newest first. */
+    public List<News> getAllNews() throws SQLException {
+        List<News> newsList = new ArrayList<>();
+        String sql = "SELECT * FROM news ORDER BY publish_date DESC";
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(sql)) {
+            // Turn every row of the result into a News object.
+            while (rows.next()) {
+                newsList.add(readNews(rows));
+            }
+        }
+        return newsList;
+    }
+
+    /** UPDATE: saves the changed fields of a news item. Source and url (the key) stay the same. */
+    public void updateNews(News news) throws SQLException {
+        String sql = """
+                UPDATE news SET title = ?, description = ?, author = ?, publisher = ?,
+                    publish_date = ?, last_modified_date = ?, language = ?, cover_image = ?
+                WHERE source = ? AND url = ?
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, news.getTitle());
+            statement.setString(2, news.getDescription());
+            statement.setString(3, news.getAuthor());
+            statement.setString(4, news.getPublisher());
+            statement.setString(5, toText(news.getPublishDate()));
+            statement.setString(6, toText(now()));
+            statement.setString(7, news.getLanguage());
+            statement.setString(8, news.getCoverImage());
+            statement.setString(9, news.getSource());
+            statement.setString(10, news.getUrl());
             statement.executeUpdate();
         }
     }
 
-    /** Loads every saved article, newest first. */
-    public List<RssArticle> loadArticles() throws SQLException {
-        List<RssArticle> articles = new ArrayList<>();
-        // A higher id means the article was saved later, so this shows the newest first.
-        String sql = "SELECT * FROM articles ORDER BY id DESC";
-
-        try (Statement statement = connection.createStatement();
-             ResultSet rows = statement.executeQuery(sql)) {
-            // Turn every row of the result into an RssArticle object.
-            while (rows.next()) {
-                articles.add(new RssArticle(
-                        rows.getString("title"),
-                        rows.getString("description"),
-                        rows.getString("url"),
-                        rows.getString("publish_date"),
-                        rows.getString("language"),
-                        rows.getString("source_name"),
-                        rows.getString("cover_image")
-                ));
-            }
+    /** DELETE: removes one news item by its key. */
+    public void deleteNews(String source, String url) throws SQLException {
+        String sql = "DELETE FROM news WHERE source = ? AND url = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, source);
+            statement.setString(2, url);
+            statement.executeUpdate();
         }
-        return articles;
+    }
+
+    /** Deletes every news item from the database. */
+    public void clearAll() throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("DELETE FROM news");
+            save();
+        }
+    }
+
+    /** Builds a News object from the current row of a query result. */
+    private News readNews(ResultSet row) throws SQLException {
+        return new News(
+                row.getString("title"),
+                row.getString("description"),
+                row.getString("source"),
+                row.getString("author"),
+                row.getString("publisher"),
+                toTimestamp(row.getString("publish_date")),
+                row.getString("url"),
+                toTimestamp(row.getString("creation_date")),
+                toTimestamp(row.getString("last_modified_date")),
+                row.getString("language"),
+                row.getString("cover_image")
+        );
+    }
+
+    // Timestamps are stored as readable text like "2026-10-20 18:30:00.0",
+    // which also sorts correctly with ORDER BY.
+
+    /** Turns a Timestamp into text for the database (null stays null). */
+    private static String toText(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toString();
+    }
+
+    /** Turns database text back into a Timestamp (null or bad text gives null). */
+    private static Timestamp toTimestamp(String text) {
+        try {
+            return text == null ? null : Timestamp.valueOf(text);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** The current date and time. */
+    private static Timestamp now() {
+        return new Timestamp(System.currentTimeMillis());
     }
 }
+

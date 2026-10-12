@@ -4,6 +4,7 @@ import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -25,38 +26,41 @@ import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-import DataHandle.RssArticle;
+import DataHandle.News;
 
-/** Displays items in a searchable list with a details panel. */
-public class NewsEventsPanel extends JPanel {
+/** Displays news in a searchable list (left, 1/3) with a details panel (right, 2/3). */
+public class NewsPanel extends JPanel {
     // Cover images are scaled down to this height in the details panel.
     private static final int COVER_HEIGHT = 200;
 
-    // allItems holds every article; visibleItems only the ones that match the search.
-    private final List<ContentItems> allItems = new ArrayList<>();
-    private final DefaultListModel<ContentItems> visibleItems = new DefaultListModel<>();
-    private final JList<ContentItems> itemList = new JList<>(visibleItems);
+    // allNews holds every news item; visibleNews only the ones that match the search.
+    private final List<News> allNews = new ArrayList<>();
+    private final DefaultListModel<News> visibleNews = new DefaultListModel<>();
+    private final JList<News> newsList = new JList<>(visibleNews);
 
     // The parts of the window.
     private final JTextField searchField = new JTextField();
-    // "Both" shows every language; the others keep only RO or HU articles.
+    // "Both" shows every language; the others keep only RO or HU news.
     private final JComboBox<String> languageBox = new JComboBox<>(new String[] {"Both", "Romanian", "Hungarian"});
     private final JButton refreshButton = new JButton("Refresh");
+    private final JButton addButton = new JButton("Add");
+    private final JButton editButton = new JButton("Edit");
+    private final JButton deleteButton = new JButton("Delete");
     private final JButton clearDbButton = new JButton("Clear DB");
     private final JLabel statusLabel = new JLabel(" ");
     private final JProgressBar loadingBar = new JProgressBar();
     private final JPanel detailsPanel = new JPanel(new BorderLayout(12, 12));
 
-    /** Creates the search bar, list, details area, and status bar. */
-    public NewsEventsPanel() {
+    /** Creates the search bar, list, details area, buttons and status bar. */
+    public NewsPanel() {
         setLayout(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         // Show the details whenever the user clicks a different item.
-        itemList.addListSelectionListener(event -> {
+        newsList.addListSelectionListener(event -> {
             // Skip the extra events Swing sends while the mouse button is still held down.
             if (!event.getValueIsAdjusting()) {
-                showDetails(itemList.getSelectedValue());
+                showDetails(newsList.getSelectedValue());
             }
         });
 
@@ -64,22 +68,22 @@ public class NewsEventsPanel extends JPanel {
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent event) {
-                filterItems();
+                filterNews();
             }
 
             @Override
             public void removeUpdate(DocumentEvent event) {
-                filterItems();
+                filterNews();
             }
 
             @Override
             public void changedUpdate(DocumentEvent event) {
-                filterItems();
+                filterNews();
             }
         });
 
         // Filter the list again when another language is chosen.
-        languageBox.addActionListener(event -> filterItems());
+        languageBox.addActionListener(event -> filterNews());
 
         showDetails(null);
 
@@ -94,13 +98,16 @@ public class NewsEventsPanel extends JPanel {
         topBar.add(topRight, BorderLayout.EAST);
 
         JSplitPane splitPane = new JSplitPane(
-                JSplitPane.HORIZONTAL_SPLIT, new JScrollPane(itemList), detailsPanel);
+                JSplitPane.HORIZONTAL_SPLIT, new JScrollPane(newsList), detailsPanel);
         // The list gets about 1/3 of the window, the details about 2/3.
         splitPane.setResizeWeight(1.0 / 3.0);
         splitPane.setDividerLocation(1.0 / 3.0);
 
-        // Button bar under the list and details.
+        // Button bar under the list and details: [Add] [Edit] [Delete] [Clear DB]
         JPanel buttonBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        buttonBar.add(addButton);
+        buttonBar.add(editButton);
+        buttonBar.add(deleteButton);
         buttonBar.add(clearDbButton);
 
         // Status bar: status text and a progress bar that only shows while loading.
@@ -119,21 +126,26 @@ public class NewsEventsPanel extends JPanel {
         add(bottomPanel, BorderLayout.SOUTH);
     }
 
-    /** Runs the given action when the Refresh button is clicked. */
-    public void onRefresh(Runnable action) {
-        refreshButton.addActionListener(event -> action.run());
-    }
+    // These methods let GUI decide what each button does.
+    public void onRefresh(Runnable action) { refreshButton.addActionListener(event -> action.run()); }
+    public void onAdd(Runnable action) { addButton.addActionListener(event -> action.run()); }
+    public void onEdit(Runnable action) { editButton.addActionListener(event -> action.run()); }
+    public void onDelete(Runnable action) { deleteButton.addActionListener(event -> action.run()); }
+    public void onClearDb(Runnable action) { clearDbButton.addActionListener(event -> action.run()); }
 
-    /** Runs the given action when the Clear DB button is clicked. */
-    public void onClearDb(Runnable action) {
-        clearDbButton.addActionListener(event -> action.run());
+    /** Returns the news item selected in the list, or null if nothing is selected. */
+    public News getSelectedNews() {
+        return newsList.getSelectedValue();
     }
 
     /** Shows or hides the loading state and blocks the buttons while loading. */
     public void setLoading(boolean loading) {
         loadingBar.setVisible(loading);
+        // Changing the database while a refresh is writing to it would mix up the data.
         refreshButton.setEnabled(!loading);
-        // Clearing the database while a refresh is writing to it would mix up the data.
+        addButton.setEnabled(!loading);
+        editButton.setEnabled(!loading);
+        deleteButton.setEnabled(!loading);
         clearDbButton.setEnabled(!loading);
         revalidate();
     }
@@ -143,41 +155,28 @@ public class NewsEventsPanel extends JPanel {
         statusLabel.setText(text);
     }
 
-    /** Adds an item and refreshes the filtered list. */
-    public void addItem(ContentItems item) {
-        if (item == null) {
-            throw new IllegalArgumentException("item cannot be null");
-        }
-        allItems.add(item);
-        filterItems();
+    /** Replaces all news in the list with new ones. */
+    public void setNews(List<News> news) {
+        allNews.clear();
+        allNews.addAll(news);
+        filterNews();
     }
 
-    /** Replaces all items in the list with new ones. */
-    public void setItems(List<ContentItems> items) {
-        // Remove the old items first, otherwise every article would show up twice.
-        allItems.clear();
-        allItems.addAll(items);
-
-        // Refresh the list only ONCE at the end.
-        // (Calling addItem() for each article refreshed it every time, which was slow.)
-        filterItems();
-    }
-
-    /** Rebuilds the visible list from allItems, keeping only the items that match the search. */
-    private void filterItems() {
+    /** Rebuilds the visible list from allNews, keeping only the items that match the search and language. */
+    private void filterNews() {
         String searchText = searchField.getText().trim().toLowerCase(Locale.ROOT);
         String language = selectedLanguageCode();
-        visibleItems.clear();
+        visibleNews.clear();
 
-        for (ContentItems item : allItems) {
-            if (matchesSearch(item, searchText) && matchesLanguage(item, language)) {
-                visibleItems.addElement(item);
+        for (News news : allNews) {
+            if (matchesSearch(news, searchText) && matchesLanguage(news, language)) {
+                visibleNews.addElement(news);
             }
         }
 
         // Select the first result so the details panel is never empty when there are results.
-        if (!visibleItems.isEmpty()) {
-            itemList.setSelectedIndex(0);
+        if (!visibleNews.isEmpty()) {
+            newsList.setSelectedIndex(0);
         } else {
             showDetails(null);
         }
@@ -195,23 +194,23 @@ public class NewsEventsPanel extends JPanel {
         return "";
     }
 
-    /** Checks whether the item is in the chosen language; an empty code matches everything. */
-    private boolean matchesLanguage(ContentItems item, String languageCode) {
-        return languageCode.isEmpty() || item.getValue("Language").equalsIgnoreCase(languageCode);
+    /** Checks whether the news is in the chosen language; an empty code matches everything. */
+    private boolean matchesLanguage(News news, String languageCode) {
+        return languageCode.isEmpty() || news.getLanguage().equalsIgnoreCase(languageCode);
     }
 
     /** Checks whether the search text appears in the title or description. */
-    private boolean matchesSearch(ContentItems item, String searchText) {
+    private boolean matchesSearch(News news, String searchText) {
         if (searchText.isEmpty()) {
             return true;
         }
-        String title = item.getValue("Title").toLowerCase(Locale.ROOT);
-        String description = item.getValue("Description").toLowerCase(Locale.ROOT);
+        String title = news.getTitle().toLowerCase(Locale.ROOT);
+        String description = news.getDescription().toLowerCase(Locale.ROOT);
         return title.contains(searchText) || description.contains(searchText);
     }
 
-    /** Shows all fields of the item on the right side, or a hint when nothing is selected. */
-    private void showDetails(ContentItems item) {
+    /** Shows all fields of the news item on the right side, or a hint when nothing is selected. */
+    private void showDetails(News news) {
         // Remove the old details before adding the new ones.
         detailsPanel.removeAll();
 
@@ -220,26 +219,24 @@ public class NewsEventsPanel extends JPanel {
         details.setLineWrap(true);
         details.setWrapStyleWord(true);
 
-        if (item == null) {
+        if (news == null) {
             details.setText("Select an item to see its details.");
         } else {
-            StringBuilder text = new StringBuilder(item.getType()).append("\n\n");
-            String[] fieldNames = item.getFieldNames();
-            String[] values = item.getValues();
-
-            for (int i = 0; i < fieldNames.length && i < values.length; i++) {
-                // The cover image is shown as a picture above the text, not as a path.
-                if (fieldNames[i].equals("Cover image")) {
-                    continue;
-                }
-                text.append(fieldNames[i]).append(": ").append(values[i]).append("\n\n");
-            }
-
-            details.setText(text.toString());
+            details.setText(news.getTitle() + "\n\n"
+                    + news.getDescription() + "\n\n"
+                    + "Source: " + news.getSource() + "\n"
+                    + "Author: " + news.getAuthor() + "\n"
+                    + "Publisher: " + news.getPublisher() + "\n"
+                    + "Published: " + formatDate(news.getPublishDate()) + "\n"
+                    + "Language: " + news.getLanguage() + "\n"
+                    + "URL: " + news.getUrl() + "\n\n"
+                    + "Saved: " + formatDate(news.getCreationDate()) + "\n"
+                    + "Last modified: " + formatDate(news.getLastModifiedDate()));
             // Scroll back to the top for long descriptions.
             details.setCaretPosition(0);
 
-            detailsPanel.add(createCoverLabel(item.getValue("Cover image")), BorderLayout.NORTH);
+            // The cover image is shown as a picture above the text.
+            detailsPanel.add(createCoverLabel(news.getCoverImage()), BorderLayout.NORTH);
         }
 
         detailsPanel.add(new JScrollPane(details), BorderLayout.CENTER);
@@ -248,12 +245,18 @@ public class NewsEventsPanel extends JPanel {
         detailsPanel.repaint();
     }
 
-    /** Creates a label with the item's cover image, or the default image if it can't be loaded. */
+    /** Formats a Timestamp as "yyyy-MM-dd HH:mm:ss", or "" when it is missing. */
+    public static String formatDate(Timestamp timestamp) {
+        // Timestamp.toString() gives "2026-10-20 18:30:00.0"; we cut off the ".0".
+        return timestamp == null ? "" : timestamp.toString().substring(0, 19);
+    }
+
+    /** Creates a label with the cover image, or the default image if it can't be loaded. */
     private JLabel createCoverLabel(String imagePath) {
         BufferedImage image = readImage(imagePath);
         if (image == null) {
             // Missing or broken file: fall back to the default cover.
-            image = readImage(RssArticle.DEFAULT_COVER_IMAGE);
+            image = readImage(News.DEFAULT_COVER_IMAGE);
         }
         if (image == null) {
             return new JLabel("No cover image", SwingConstants.CENTER);
