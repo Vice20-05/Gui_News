@@ -1,5 +1,6 @@
 
 import java.awt.Dimension;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -59,6 +60,13 @@ public class GUI {
             // Runs on a background thread, so reading the database doesn't freeze the window.
             @Override
             protected List<RssArticle> doInBackground() throws Exception {
+                try {
+                    // Older saved articles have no language, so take it from RSS.json.
+                    RssUpdater.fillMissingLanguages(RSS_CONFIG.toString(), database);
+                } catch (IOException e) {
+                    // Without RSS.json we can still show the saved news.
+                    System.out.println("Could not read languages from RSS.json: " + e.getMessage());
+                }
                 return database.loadArticles();
             }
 
@@ -93,6 +101,7 @@ public class GUI {
             // Messages about feeds that failed, filled in by the background work.
             private List<String> problems;
 
+            // Runs on a background thread, so downloading doesn't freeze the window.
             @Override
             protected List<RssArticle> doInBackground() throws Exception {
                 // Download all feeds, save the new articles, then read the full list back.
@@ -100,6 +109,7 @@ public class GUI {
                 return database.loadArticles();
             }
 
+            // Runs back on the Swing thread to show the result.
             @Override
             protected void done() {
                 panel.setLoading(false);
@@ -155,7 +165,7 @@ public class GUI {
     /** Converts a stored RSS article into the generic item used by the UI. */
     private static ContentItems toContentItem(RssArticle article) {
         String[] fieldNames = {
-                "Title", "Description", "Publish date", "Source", "Source link", "Language"
+                "Title", "Description", "Publish date", "Source", "Source link", "Language", "Cover image"
         };
         String[] values = {
                 article.getTitle(),
@@ -163,7 +173,8 @@ public class GUI {
                 article.getPublishDate(),
                 article.getSourceName(),
                 article.getUrl(),
-                article.getLanguage()
+                article.getLanguage(),
+                article.getCoverImage()
         };
         return new ContentItems("News", fieldNames, values);
     }

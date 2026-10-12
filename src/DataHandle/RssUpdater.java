@@ -23,6 +23,7 @@ public class RssUpdater {
         for (RssSource source : sources) {
             // Save the source and get its database id.
             int sourceId = database.addSourceIfMissing(source.getName(), source.getUrl());
+            database.fillMissingLanguage(source.getName(), source.getLanguage());
 
             // Step 1: ask the server for the status code before downloading anything.
             String feedUrl = source.getUrl();
@@ -48,7 +49,7 @@ public class RssUpdater {
 
             try {
                 // Download the articles for this source.
-                List<RssArticle> articles = parser.fetchArticles(feedUrl, source.getName());
+                List<RssArticle> articles = parser.fetchArticles(feedUrl, source.getName(), source.getLanguage());
 
                 // Save each article and count newly inserted records.
                 int newCount = 0;
@@ -70,5 +71,13 @@ public class RssUpdater {
             database.save();
         }
         return problems;
+    }
+
+    /** Sets the language of saved articles that were stored before sources had a language. */
+    public static void fillMissingLanguages(String jsonPath, NewsDatabase database) throws IOException, SQLException {
+        for (RssSource source : new JsonReader().readSources(jsonPath)) {
+            database.fillMissingLanguage(source.getName(), source.getLanguage());
+        }
+        database.save();
     }
 }

@@ -6,6 +6,7 @@ import java.net.URI;
 
 /** Sends HTTP GET requests to check whether a URL can be reached. */
 public class HttpHelper {
+    // How long to wait for a server before giving up (5 seconds).
     public static final int TIMEOUT_MS = 5000;
 
     /** Returned when the request timed out. */

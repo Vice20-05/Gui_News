@@ -66,13 +66,30 @@ public class NewsDatabase {
                     description TEXT,
                     url TEXT NOT NULL UNIQUE,
                     publish_date TEXT,
-                    language TEXT
+                    language TEXT,
+                    cover_image TEXT
                 )
                 """;
 
         try (Statement statement = connection.createStatement()) {
             statement.executeUpdate(sourcesTable);
             statement.executeUpdate(articlesTable);
+        }
+        addCoverImageColumnIfMissing();
+    }
+
+    /** Adds the cover_image column to databases created before the column existed. */
+    private void addCoverImageColumnIfMissing() throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet columns = statement.executeQuery("PRAGMA table_info(articles)")) {
+            while (columns.next()) {
+                if (columns.getString("name").equals("cover_image")) {
+                    return;
+                }
+            }
+        }
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("ALTER TABLE articles ADD COLUMN cover_image TEXT");
         }
     }
 
@@ -110,8 +127,8 @@ public class NewsDatabase {
         // The url column is UNIQUE, so "OR IGNORE" skips articles we already have.
         String sql = """
                 INSERT OR IGNORE INTO articles
-                (source_id, source_name, title, description, url, publish_date, language)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (source_id, source_name, title, description, url, publish_date, language, cover_image)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -122,8 +139,22 @@ public class NewsDatabase {
             statement.setString(5, article.getUrl());
             statement.setString(6, article.getPublishDate());
             statement.setString(7, article.getLanguage());
+            statement.setString(8, article.getCoverImage());
             // executeUpdate returns how many rows were inserted: 1 if new, 0 if ignored.
             return statement.executeUpdate() == 1;
+        }
+    }
+
+    /** Sets the language of this source's articles that don't have one yet. */
+    public void fillMissingLanguage(String sourceName, String language) throws SQLException {
+        if (language == null || language.isEmpty()) {
+            return;
+        }
+        String sql = "UPDATE articles SET language = ? WHERE source_name = ? AND (language IS NULL OR language = '')";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, language);
+            statement.setString(2, sourceName);
+            statement.executeUpdate();
         }
     }
 
@@ -143,7 +174,8 @@ public class NewsDatabase {
                         rows.getString("url"),
                         rows.getString("publish_date"),
                         rows.getString("language"),
-                        rows.getString("source_name")
+                        rows.getString("source_name"),
+                        rows.getString("cover_image")
                 ));
             }
         }
