@@ -11,8 +11,9 @@ public class RssArticle {
 
     /** Creates an article and replaces missing field values with empty strings. */
     public RssArticle(String title, String description,  String url, String publishDate, String language, String sourceName) {
-        this.title = valueOrEmpty(title);
-        this.description = valueOrEmpty(description);
+        // RSS feeds often contain HTML (<p>, &#8230;), so we keep only the plain text.
+        this.title = HtmlText.toPlainText(title);
+        this.description = HtmlText.toPlainText(description);
         this.url = valueOrEmpty(url);
         this.publishDate = valueOrEmpty(publishDate);
         this.language = valueOrEmpty(language);

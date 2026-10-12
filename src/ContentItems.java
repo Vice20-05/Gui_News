@@ -43,6 +43,16 @@ public class ContentItems {
         this.values = newValues;
     }
 
+    /** Returns the value of the given field, or an empty string if there is no such field. */
+    public String getValue(String fieldName) {
+        for (int i = 0; i < fieldNames.length; i++) {
+            if (fieldNames[i].equals(fieldName)) {
+                return values[i];
+            }
+        }
+        return "";
+    }
+
     /** Returns the first value, which is treated as the title. */
     public String getTitle() {
         return values[0];
