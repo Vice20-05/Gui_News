@@ -1,79 +1,108 @@
 
-import java.awt.BorderLayout;
 import java.awt.Dimension;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
+import javax.swing.JOptionPane;
+import javax.swing.SwingWorker;
 
 import DataHandle.NewsDatabase;
 import DataHandle.RssArticle;
 import DataHandle.RssUpdater;
 
-/** Builds the main window and loads RSS articles in the background. */
+/** Builds the main window, shows saved news, and refreshes RSS feeds on demand. */
 public class GUI {
     private static final Path RSS_CONFIG = Path.of("RSS.json");
 
+    private static NewsDatabase database;
+    private static NewsEventsPanel panel;
+
     /** Creates and displays the application window. */
     public static void showGUI() {
+        try {
+            database = new NewsDatabase();
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(null, "Could not open the database: " + e.getMessage(),
+                    "Database error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        panel = new NewsEventsPanel();
+        panel.onRefresh(GUI::refresh);
+
         JFrame frame = new JFrame("News and Events");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(new Dimension(800, 600));
+        frame.setSize(new Dimension(1000, 650));
         frame.setLocationRelativeTo(null);
-        frame.add(createContentPanel());
+        frame.add(panel);
         frame.setVisible(true);
+
+        loadSavedArticles();
     }
 
-    /** Creates the panel that displays downloaded articles and loading status. */
-    private static JPanel createContentPanel() {
-        NewsEventsPanel panel = new NewsEventsPanel();
-        JLabel statusLabel = new JLabel("Loading news and events...");
-        // Downloading is slow, so we do it on a separate thread.
-        // That way the window does not freeze while we wait.
-        Thread worker = new Thread(() -> {
-            try {
-                NewsDatabase database = new NewsDatabase();
+    /** Shows the articles already saved in SQLite, without going online. */
+    private static void loadSavedArticles() {
+        panel.setLoading(true);
+        panel.setStatus("Loading saved news...");
 
-                // Step 1: show the articles we already saved last time.
-                // This fills the list right away instead of leaving it empty.
-                List<RssArticle> savedArticles = database.loadArticles();
-                SwingUtilities.invokeLater(() -> {
-                    showArticles(panel, savedArticles);
-                    statusLabel.setText("Showing " + savedArticles.size()
-                            + " saved articles, downloading new ones...");
-                });
-
-                // Step 2: download new articles from every website (this takes a while).
-                RssUpdater.updateAll(RSS_CONFIG.toString(), database);
-
-                // Step 3: load everything again, so the new articles appear too.
-                List<RssArticle> articles = database.loadArticles();
-                SwingUtilities.invokeLater(() -> {
-                    showArticles(panel, articles);
-                    statusLabel.setText("News and Events (" + articles.size() + " articles)");
-                });
-            } catch (IOException | SQLException e) {
-                SwingUtilities.invokeLater(
-                        () -> statusLabel.setText("Could not load news: " + e.getMessage())
-                );
+        new SwingWorker<List<RssArticle>, Void>() {
+            @Override
+            protected List<RssArticle> doInBackground() throws Exception {
+                return database.loadArticles();
             }
-        });
-        worker.start();
 
-        JPanel contentPanel = new JPanel(new BorderLayout());
-        contentPanel.add(statusLabel, BorderLayout.NORTH);
-        contentPanel.add(panel, BorderLayout.CENTER);
-        return contentPanel;
+            @Override
+            protected void done() {
+                panel.setLoading(false);
+                try {
+                    List<RssArticle> articles = get();
+                    showArticles(articles);
+                    if (articles.isEmpty()) {
+                        // First start: nothing saved yet, so download the feeds right away.
+                        refresh();
+                    } else {
+                        panel.setStatus(articles.size() + " saved articles. Press Refresh to download new ones.");
+                    }
+                } catch (InterruptedException | ExecutionException e) {
+                    panel.setStatus("Could not load saved news: " + rootMessage(e));
+                }
+            }
+        }.execute();
+    }
+
+    /** Downloads every RSS feed, saves new articles, and reloads the list. */
+    private static void refresh() {
+        panel.setLoading(true);
+        panel.setStatus("Downloading news from RSS feeds...");
+
+        // Download RSS feeds in the background to keep the Swing UI responsive.
+        new SwingWorker<List<RssArticle>, Void>() {
+            @Override
+            protected List<RssArticle> doInBackground() throws Exception {
+                RssUpdater.updateAll(RSS_CONFIG.toString(), database);
+                return database.loadArticles();
+            }
+
+            @Override
+            protected void done() {
+                panel.setLoading(false);
+                try {
+                    List<RssArticle> articles = get();
+                    showArticles(articles);
+                    panel.setStatus("Refreshed: " + articles.size() + " articles.");
+                } catch (InterruptedException | ExecutionException e) {
+                    panel.setStatus("Refresh failed: " + rootMessage(e));
+                }
+            }
+        }.execute();
     }
 
     /** Replaces the list in the panel with the given articles. */
-    private static void showArticles(NewsEventsPanel panel, List<RssArticle> articles) {
+    private static void showArticles(List<RssArticle> articles) {
         // Turn every article into an item the panel understands.
         List<ContentItems> items = new ArrayList<>();
         for (RssArticle article : articles) {
@@ -96,5 +125,11 @@ public class GUI {
                 article.getLanguage()
         };
         return new ContentItems("News", fieldNames, values);
+    }
+
+    /** Returns the message of the original exception thrown in the background thread. */
+    private static String rootMessage(Exception e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        return cause.getMessage();
     }
 }

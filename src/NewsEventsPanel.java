@@ -2,9 +2,13 @@ import java.awt.BorderLayout;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
+import javax.swing.JButton;
+import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
@@ -18,11 +22,15 @@ public class NewsEventsPanel extends JPanel {
     private final DefaultListModel<ContentItems> visibleItems = new DefaultListModel<>();
     private final JList<ContentItems> itemList = new JList<>(visibleItems);
     private final JTextField searchField = new JTextField();
+    private final JButton refreshButton = new JButton("Refresh");
+    private final JLabel statusLabel = new JLabel(" ");
+    private final JProgressBar loadingBar = new JProgressBar();
     private final JPanel detailsPanel = new JPanel(new BorderLayout(12, 12));
 
-    /** Creates the list, search field, and details area. */
+    /** Creates the search bar, list, details area, and status bar. */
     public NewsEventsPanel() {
         setLayout(new BorderLayout(8, 8));
+        setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         itemList.addListSelectionListener(event -> {
             if (!event.getValueIsAdjusting()) {
@@ -30,6 +38,7 @@ public class NewsEventsPanel extends JPanel {
             }
         });
 
+        // Filter the list while the user is typing.
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent event) {
@@ -49,13 +58,45 @@ public class NewsEventsPanel extends JPanel {
 
         showDetails(null);
 
-        JPanel leftPanel = new JPanel(new BorderLayout(8, 8));
-        leftPanel.add(searchField, BorderLayout.NORTH);
-        leftPanel.add(new JScrollPane(itemList), BorderLayout.CENTER);
+        // Top bar: "Search: [__________] [Refresh]"
+        JPanel topBar = new JPanel(new BorderLayout(8, 8));
+        topBar.add(new JLabel("Search:"), BorderLayout.WEST);
+        topBar.add(searchField, BorderLayout.CENTER);
+        topBar.add(refreshButton, BorderLayout.EAST);
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, detailsPanel);
-        splitPane.setResizeWeight(0.35);
+        JSplitPane splitPane = new JSplitPane(
+                JSplitPane.HORIZONTAL_SPLIT, new JScrollPane(itemList), detailsPanel);
+        // The list gets about 1/3 of the window, the details about 2/3.
+        splitPane.setResizeWeight(1.0 / 3.0);
+        splitPane.setDividerLocation(1.0 / 3.0);
+
+        // Bottom bar: status text and a progress bar that only shows while loading.
+        loadingBar.setIndeterminate(true);
+        loadingBar.setVisible(false);
+        JPanel statusBar = new JPanel(new BorderLayout(8, 8));
+        statusBar.add(statusLabel, BorderLayout.CENTER);
+        statusBar.add(loadingBar, BorderLayout.EAST);
+
+        add(topBar, BorderLayout.NORTH);
         add(splitPane, BorderLayout.CENTER);
+        add(statusBar, BorderLayout.SOUTH);
+    }
+
+    /** Runs the given action when the Refresh button is clicked. */
+    public void onRefresh(Runnable action) {
+        refreshButton.addActionListener(event -> action.run());
+    }
+
+    /** Shows or hides the loading state and blocks the Refresh button while loading. */
+    public void setLoading(boolean loading) {
+        loadingBar.setVisible(loading);
+        refreshButton.setEnabled(!loading);
+        revalidate();
+    }
+
+    /** Shows a message in the status bar. */
+    public void setStatus(String text) {
+        statusLabel.setText(text);
     }
 
     /** Adds an item and refreshes the filtered list. */
@@ -95,18 +136,14 @@ public class NewsEventsPanel extends JPanel {
         }
     }
 
+    /** Checks whether the search text appears in the title or description. */
     private boolean matchesSearch(ContentItems item, String searchText) {
-        if (item.getType().toLowerCase(Locale.ROOT).contains(searchText)) {
+        if (searchText.isEmpty()) {
             return true;
         }
-
-        for (String value : item.getValues()) {
-            if (value.toLowerCase(Locale.ROOT).contains(searchText)) {
-                return true;
-            }
-        }
-
-        return false;
+        String title = item.getValue("Title").toLowerCase(Locale.ROOT);
+        String description = item.getValue("Description").toLowerCase(Locale.ROOT);
+        return title.contains(searchText) || description.contains(searchText);
     }
 
     private void showDetails(ContentItems item) {
@@ -129,6 +166,8 @@ public class NewsEventsPanel extends JPanel {
             }
 
             details.setText(text.toString());
+            // Scroll back to the top for long descriptions.
+            details.setCaretPosition(0);
         }
 
         detailsPanel.add(new JScrollPane(details), BorderLayout.CENTER);
