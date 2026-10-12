@@ -14,8 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-// Reads the list of RSS feed URLs from the project's JSON configuration file.
+/** Reads and validates RSS feed definitions from a JSON configuration file. */
 public class JsonReader {
+    /** Loads the RSS sources from the file's {@code rssSources} array. */
     public List<RssSource> readSources(String filePath) throws IOException {
         try (Reader reader = Files.newBufferedReader(Path.of(filePath))) {
             // The JSON file has one root object containing an "rssSources" array.

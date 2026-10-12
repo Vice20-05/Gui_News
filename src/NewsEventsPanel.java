@@ -12,6 +12,7 @@ import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
+/** Displays items in a searchable list with a details panel. */
 public class NewsEventsPanel extends JPanel {
     private final List<ContentItems> allItems = new ArrayList<>();
     private final DefaultListModel<ContentItems> visibleItems = new DefaultListModel<>();
@@ -19,6 +20,7 @@ public class NewsEventsPanel extends JPanel {
     private final JTextField searchField = new JTextField();
     private final JPanel detailsPanel = new JPanel(new BorderLayout(12, 12));
 
+    /** Creates the list, search field, and details area. */
     public NewsEventsPanel() {
         setLayout(new BorderLayout(8, 8));
 
@@ -56,11 +58,23 @@ public class NewsEventsPanel extends JPanel {
         add(splitPane, BorderLayout.CENTER);
     }
 
+    /** Adds an item and refreshes the filtered list. */
     public void addItem(ContentItems item) {
         if (item == null) {
             throw new IllegalArgumentException("item cannot be null");
         }
         allItems.add(item);
+        filterItems();
+    }
+
+    /** Replaces all items in the list with new ones. */
+    public void setItems(List<ContentItems> items) {
+        // Remove the old items first, otherwise every article would show up twice.
+        allItems.clear();
+        allItems.addAll(items);
+
+        // Refresh the list only ONCE at the end.
+        // (Calling addItem() for each article refreshed it every time, which was slow.)
         filterItems();
     }
 

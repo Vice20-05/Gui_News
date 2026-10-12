@@ -1,0 +1,160 @@
+================================================================
+ STEP 2 of 5  -  RssXmlParser (download + read the feed)
+================================================================
+
+WHERE THIS CODE GOES
+--------------------
+NEW FILE:  src/Database/RssXmlParser.java   (create the Database folder if needed)
+
+WHAT IT DOES
+------------
+1. Downloads a website's RSS feed using its https link from RSS.json.
+2. Reads the XML and finds every <item> (each <item> is one article).
+3. Takes the <language> tag of the website (like "ro-RO" or "hu-HU") and
+   gives it to every article. This is the language key shown in the GUI.
+4. Removes HTML tags from the description so the text is clean.
+
+NEW WORDS / IDEAS IN THIS FILE
+------------------------------
+- XML:            text with tags, like HTML. <title>Hello</title>
+- URLConnection:  Java's simple way to open a link and read what it sends back.
+- timeout:        how long to wait before giving up (in milliseconds,
+                  10000 ms = 10 seconds).
+- InputStream:    a "pipe" that the text flows through, piece by piece.
+- Document / Element / NodeList:
+                  Java turns the XML into a tree. Element = one tag,
+                  NodeList = a list of tags, getTextContent() = text inside a tag.
+- XXE:            an attack where a bad XML file tricks the program into
+                  reading your files. The one setFeature(...) line blocks it.
+- replaceAll("<[^>]*>", ""):
+                  a "regular expression" (a search pattern). It finds every
+                  HTML tag and deletes it.
+
+THE CODE (copy everything between the two dashed lines)
+----------------------------------------------------------------
+package Database;
+
+import DataHandle.RssArticle;
+import DataHandle.RssSource;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URLConnection;
+import java.util.ArrayList;
+import java.util.List;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+
+// Downloads an RSS feed from the internet and turns it into a list of RssArticle.
+//
+// An RSS feed is just a text file written in XML. It looks like this:
+//
+//   <rss>
+//     <channel>
+//       <language>ro-RO</language>        <- the language of the whole website
+//       <item>                            <- one <item> = one article
+//         <title>Headline</title>
+//         <link>https://...</link>
+//         <description>Short text</description>
+//         <pubDate>Mon, 05 Oct 2026</pubDate>
+//       </item>
+//       <item> ... </item>                <- the next article
+//     </channel>
+//   </rss>
+public class RssXmlParser {
+
+    // STEP A: download the feed and read it.
+    public List<RssArticle> fetchArticles(RssSource source) throws IOException {
+        String feedUrl = source.getUrl();
+
+        // We only allow secure https links.
+        if (!feedUrl.startsWith("https://")) {
+            throw new IOException("Only https:// links are allowed: " + feedUrl);
+        }
+
+        // Open a connection to the website (like typing the link in a browser).
+        URLConnection connection = URI.create(feedUrl).toURL().openConnection();
+        connection.setConnectTimeout(10000); // wait max 10 seconds to connect
+        connection.setReadTimeout(20000);    // wait max 20 seconds for the data
+        // Some websites block programs that do not say their name, so we say it.
+        connection.setRequestProperty("User-Agent", "GuiNews RSS reader");
+
+        // getInputStream() gives us the text of the feed.
+        // try ( ... ) closes the connection automatically when we are done.
+        try (InputStream feedText = connection.getInputStream()) {
+            return parse(feedText, source.getName());
+        }
+    }
+
+    // STEP B: read the XML text and find all the <item> tags.
+    // This is public so you can also test it with a local .xml file.
+    public List<RssArticle> parse(InputStream feedText, String sourceName) throws IOException {
+        List<RssArticle> articles = new ArrayList<>();
+
+        try {
+            // Turn the text into a "Document": a tree of tags Java can search.
+            Document document = createSafeXmlReader().parse(feedText);
+
+            // The <language> tag is written once, and it is the same for every article.
+            String language = getText(document.getDocumentElement(), "language");
+
+            // Find every <item> tag. Each one is an article.
+            NodeList items = document.getElementsByTagName("item");
+
+            for (int i = 0; i < items.getLength(); i++) {
+                Element item = (Element) items.item(i);
+
+                String title = getText(item, "title");
+                String description = removeHtml(getText(item, "description"));
+                String link = getText(item, "link");
+                String date = getText(item, "pubDate");
+
+                articles.add(new RssArticle(title, description, link, date, language, sourceName));
+            }
+        } catch (Exception e) {
+            // If the XML is broken, we throw one simple error with a clear message.
+            throw new IOException("Could not read the feed of " + sourceName, e);
+        }
+
+        return articles;
+    }
+
+    // Makes the XML reader.
+    // SAFETY: we turn off a feature called "DOCTYPE". Normal RSS feeds never use it,
+    // but a bad website could use it to make our program read files from your computer
+    // (this attack is called XXE). Turning it off keeps you safe.
+    private DocumentBuilder createSafeXmlReader() throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        return factory.newDocumentBuilder();
+    }
+
+    // Finds the first <tagName> inside "parent" and returns the text inside it.
+    // Example: getText(item, "title") on <item><title>Hello</title></item> returns "Hello".
+    // If the tag does not exist, it returns "".
+    private String getText(Element parent, String tagName) {
+        NodeList found = parent.getElementsByTagName(tagName);
+        if (found.getLength() == 0) {
+            return "";
+        }
+        return found.item(0).getTextContent().trim();
+    }
+
+    // Descriptions often have HTML inside, like "<p>Hello <b>world</b></p>".
+    // "<[^>]*>" is a pattern that means: a "<", then anything that is not ">", then ">".
+    // So it matches every HTML tag, and we replace each one with nothing ("").
+    // Result: "Hello world"
+    private String removeHtml(String text) {
+        String withoutTags = text.replaceAll("<[^>]*>", "");
+        return withoutTags.replace("&nbsp;", " ").trim();
+    }
+}
+----------------------------------------------------------------
+
+CHECK
+-----
+It should build with no red errors. We use it in Step 4.
