@@ -1,15 +1,23 @@
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.SwingConstants;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
@@ -17,13 +25,22 @@ import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
+import DataHandle.RssArticle;
+
 /** Displays items in a searchable list with a details panel. */
 public class NewsEventsPanel extends JPanel {
+    // Cover images are scaled down to this height in the details panel.
+    private static final int COVER_HEIGHT = 200;
+
     // allItems holds every article; visibleItems only the ones that match the search.
     private final List<ContentItems> allItems = new ArrayList<>();
     private final DefaultListModel<ContentItems> visibleItems = new DefaultListModel<>();
     private final JList<ContentItems> itemList = new JList<>(visibleItems);
+
+    // The parts of the window.
     private final JTextField searchField = new JTextField();
+    // "Both" shows every language; the others keep only RO or HU articles.
+    private final JComboBox<String> languageBox = new JComboBox<>(new String[] {"Both", "Romanian", "Hungarian"});
     private final JButton refreshButton = new JButton("Refresh");
     private final JButton clearDbButton = new JButton("Clear DB");
     private final JLabel statusLabel = new JLabel(" ");
@@ -61,13 +78,20 @@ public class NewsEventsPanel extends JPanel {
             }
         });
 
+        // Filter the list again when another language is chosen.
+        languageBox.addActionListener(event -> filterItems());
+
         showDetails(null);
 
-        // Top bar: "Search: [__________] [Refresh]"
+        // Top bar: "Search: [__________] Language: [Both v] [Refresh]"
         JPanel topBar = new JPanel(new BorderLayout(8, 8));
         topBar.add(new JLabel("Search:"), BorderLayout.WEST);
         topBar.add(searchField, BorderLayout.CENTER);
-        topBar.add(refreshButton, BorderLayout.EAST);
+        JPanel topRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        topRight.add(new JLabel("Language:"));
+        topRight.add(languageBox);
+        topRight.add(refreshButton);
+        topBar.add(topRight, BorderLayout.EAST);
 
         JSplitPane splitPane = new JSplitPane(
                 JSplitPane.HORIZONTAL_SPLIT, new JScrollPane(itemList), detailsPanel);
@@ -142,10 +166,11 @@ public class NewsEventsPanel extends JPanel {
     /** Rebuilds the visible list from allItems, keeping only the items that match the search. */
     private void filterItems() {
         String searchText = searchField.getText().trim().toLowerCase(Locale.ROOT);
+        String language = selectedLanguageCode();
         visibleItems.clear();
 
         for (ContentItems item : allItems) {
-            if (matchesSearch(item, searchText)) {
+            if (matchesSearch(item, searchText) && matchesLanguage(item, language)) {
                 visibleItems.addElement(item);
             }
         }
@@ -156,6 +181,23 @@ public class NewsEventsPanel extends JPanel {
         } else {
             showDetails(null);
         }
+    }
+
+    /** Returns the language code chosen in the dropdown, or "" when both languages are shown. */
+    private String selectedLanguageCode() {
+        String selected = (String) languageBox.getSelectedItem();
+        if ("Romanian".equals(selected)) {
+            return "RO";
+        }
+        if ("Hungarian".equals(selected)) {
+            return "HU";
+        }
+        return "";
+    }
+
+    /** Checks whether the item is in the chosen language; an empty code matches everything. */
+    private boolean matchesLanguage(ContentItems item, String languageCode) {
+        return languageCode.isEmpty() || item.getValue("Language").equalsIgnoreCase(languageCode);
     }
 
     /** Checks whether the search text appears in the title or description. */
@@ -186,17 +228,56 @@ public class NewsEventsPanel extends JPanel {
             String[] values = item.getValues();
 
             for (int i = 0; i < fieldNames.length && i < values.length; i++) {
+                // The cover image is shown as a picture above the text, not as a path.
+                if (fieldNames[i].equals("Cover image")) {
+                    continue;
+                }
                 text.append(fieldNames[i]).append(": ").append(values[i]).append("\n\n");
             }
 
             details.setText(text.toString());
             // Scroll back to the top for long descriptions.
             details.setCaretPosition(0);
+
+            detailsPanel.add(createCoverLabel(item.getValue("Cover image")), BorderLayout.NORTH);
         }
 
         detailsPanel.add(new JScrollPane(details), BorderLayout.CENTER);
         // Tell Swing the panel changed, so it lays it out and draws it again.
         detailsPanel.revalidate();
         detailsPanel.repaint();
+    }
+
+    /** Creates a label with the item's cover image, or the default image if it can't be loaded. */
+    private JLabel createCoverLabel(String imagePath) {
+        BufferedImage image = readImage(imagePath);
+        if (image == null) {
+            // Missing or broken file: fall back to the default cover.
+            image = readImage(RssArticle.DEFAULT_COVER_IMAGE);
+        }
+        if (image == null) {
+            return new JLabel("No cover image", SwingConstants.CENTER);
+        }
+
+        // Keep the aspect ratio while scaling the image to a fixed height.
+        int width = image.getWidth() * COVER_HEIGHT / image.getHeight();
+        Image scaled = image.getScaledInstance(width, COVER_HEIGHT, Image.SCALE_SMOOTH);
+        return new JLabel(new ImageIcon(scaled));
+    }
+
+    /** Reads an image file, returning null if the path is empty, missing, or not an image. */
+    private BufferedImage readImage(String path) {
+        if (path == null || path.isEmpty()) {
+            return null;
+        }
+        File file = new File(path);
+        if (!file.isFile()) {
+            return null;
+        }
+        try {
+            return ImageIO.read(file);
+        } catch (IOException e) {
+            return null;
+        }
     }
 }

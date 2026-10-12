@@ -2,39 +2,48 @@
   "rssSources": [
     {
       "name": "Info Mures",
-      "url": "https://stiri.infomures.ro/feed/"
+      "url": "https://stiri.infomures.ro/feed/",
+      "language": "RO"
     },
     {
       "name": "Zi de Zi",
-      "url": "https://www.zi-de-zi.ro/feed/"
+      "url": "https://www.zi-de-zi.ro/feed/",
+      "language": "RO"
     },
     {
       "name": "Punctul",
-      "url": "https://punctul.ro/feed/"
+      "url": "https://punctul.ro/feed/",
+      "language": "RO"
     },
     {
       "name": "Radio Mures",
-      "url": "https://www.radiomures.ro/feed/"
+      "url": "https://www.radiomures.ro/feed/",
+      "language": "RO"
     },
     {
       "name": "KPTV News",
-      "url": "https://news.kptv.ro/feed/"
+      "url": "https://news.kptv.ro/feed/",
+      "language": "RO"
     },
     {
       "name": "laTarguMures",
-      "url": "https://latargumures.ro/feed/"
+      "url": "https://latargumures.ro/feed/",
+      "language": "RO"
     },
     {
       "name": "Vasarhely.ma",
-      "url": "https://www.vasarhely.ma/feed/"
+      "url": "https://www.vasarhely.ma/feed/",
+      "language": "HU"
     },
     {
       "name": "Marosvasarhelyi.info",
-      "url": "https://marosvasarhelyi.info/feed/"
+      "url": "https://marosvasarhelyi.info/feed/",
+      "language": "HU"
     },
     {
       "name": "Marosvasarhelyi Radio",
-      "url": "https://www.marosvasarhelyiradio.ro/hirek_kategoria/a-nap-hirei/feed/"
+      "url": "https://www.marosvasarhelyiradio.ro/hirek_kategoria/a-nap-hirei/feed/",
+      "language": "HU"
     }
   ]
 }

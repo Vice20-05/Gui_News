@@ -21,11 +21,11 @@ public class RssXmlParser {
         if (source == null || source.getUrl() == null || source.getUrl().isBlank()) {
             throw new IOException("RSS source must contain a URL.");
         }
-        return fetchArticles(source.getUrl(), source.getName());
+        return fetchArticles(source.getUrl(), source.getName(), source.getLanguage());
     }
 
     /** Downloads the feed from the given URL (for example after a redirect) and parses its articles. */
-    public List<RssArticle> fetchArticles(String feedUrl, String sourceName) throws IOException {
+    public List<RssArticle> fetchArticles(String feedUrl, String sourceName, String language) throws IOException {
         // Check that the text is a real web address before trying to connect.
         URI uri;
         try {
@@ -55,7 +55,7 @@ public class RssXmlParser {
 
         // Download the XML and parse it; try-with-resources closes the stream afterwards.
         try (InputStream feedText = connection.getInputStream()) {
-            return parse(feedText, sourceName);
+            return parse(feedText, sourceName, language);
         }
     }
 
@@ -66,7 +66,7 @@ public class RssXmlParser {
     }
 
     /** Parses RSS {@code item} elements from an input stream. */
-    public List<RssArticle> parse(InputStream feedText, String sourceName) throws IOException {
+    public List<RssArticle> parse(InputStream feedText, String sourceName, String language) throws IOException {
         if (feedText == null) {
             throw new IOException("RSS feed input stream cannot be null.");
         }
@@ -84,7 +84,7 @@ public class RssXmlParser {
                 String description = getElementText(item, "description");
                 String url = getElementText(item, "link");
                 String publishDate = getElementText(item, "pubDate");
-                articles.add(new RssArticle(title, description, url, publishDate, "", sourceName));
+                articles.add(new RssArticle(title, description, url, publishDate, language, sourceName));
             }
         } catch (Exception e) {
             // Broken XML ends up here, so one bad feed doesn't crash the program.

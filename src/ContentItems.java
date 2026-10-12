@@ -3,6 +3,7 @@ import java.util.Objects;
 
 /** Represents one displayable item and its field names and values. */
 public class ContentItems {
+    // "News" or "Event".
     private final String type;
     // fieldNames[i] is the label for values[i], for example "Title" -> "Some headline".
     private final String[] fieldNames;

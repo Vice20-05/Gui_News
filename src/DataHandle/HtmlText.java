@@ -6,8 +6,10 @@ import java.util.regex.Pattern;
 
 /** Turns the HTML found in RSS fields into plain text for the UI. */
 public class HtmlText {
+    // Finds entities like "&amp;", "&#8230;" or "&#x2026;".
     private static final Pattern ENTITY = Pattern.compile("&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);");
 
+    // The named entities that show up most often in the feeds.
     private static final Map<String, String> NAMED_ENTITIES = Map.ofEntries(
             Map.entry("amp", "&"), Map.entry("lt", "<"), Map.entry("gt", ">"),
             Map.entry("quot", "\""), Map.entry("apos", "'"), Map.entry("nbsp", " "),
@@ -55,6 +57,7 @@ public class HtmlText {
             String name = matcher.group(1);
             String replacement;
             try {
+                // Hex number (&#x2026;), decimal number (&#8230;) or a name (&amp;).
                 if (name.startsWith("#x") || name.startsWith("#X")) {
                     replacement = Character.toString(Integer.parseInt(name.substring(2), 16));
                 } else if (name.startsWith("#")) {
