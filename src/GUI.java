@@ -9,6 +9,7 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingWorker;
 
+import DataHandle.Event;
 import DataHandle.News;
 import DataHandle.NewsDatabase;
 import DataHandle.RssUpdater;
@@ -22,6 +23,9 @@ public class GUI {
     private static NewsDatabase database;
     private static NewsPanel panel;
     private static JFrame frame;
+    // true while the list shows events, false while it shows news.
+    // Add, Edit and Delete look at this to know which table to change.
+    private static boolean showingEvents = false;
 
     /** Creates and displays the application window. */
     public static void showGUI() {
@@ -41,6 +45,8 @@ public class GUI {
         panel.onEdit(GUI::editNews);
         panel.onDelete(GUI::deleteNews);
         panel.onClearDb(GUI::clearDatabase);
+        panel.onShowNews(() -> switchView(false));
+        panel.onShowEvents(() -> switchView(true));
 
         frame = new JFrame("News Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -90,16 +96,16 @@ public class GUI {
         panel.setStatus("Downloading news from RSS feeds...");
 
         // Download RSS feeds in the background to keep the Swing UI responsive.
-        new SwingWorker<List<News>, Void>() {
+        new SwingWorker<List<? extends News>, Void>() {
             // Messages about feeds that failed, filled in by the background work.
             private List<String> problems;
 
             // Runs on a background thread, so downloading doesn't freeze the window.
             @Override
-            protected List<News> doInBackground() throws Exception {
-                // Download all feeds, save the new news, then read the full list back.
+            protected List<? extends News> doInBackground() throws Exception {
+                // Download all feeds, save the new news, then read the current list back.
                 problems = RssUpdater.updateAll(RSS_CONFIG.toString(), database);
-                return database.getAllNews();
+                return loadItems();
             }
 
             // Runs back on the Swing thread to show the result.
@@ -107,13 +113,13 @@ public class GUI {
             protected void done() {
                 panel.setLoading(false);
                 try {
-                    List<News> news = get();
+                    List<? extends News> news = get();
                     panel.setNews(news);
                     if (problems.isEmpty()) {
-                        panel.setStatus("Refreshed: " + news.size() + " news.");
+                        panel.setStatus("Refreshed: " + news.size() + " " + itemName() + ".");
                     } else {
                         // Show which feeds failed and why (for example "Punctul: 403 Forbidden").
-                        panel.setStatus("Refreshed: " + news.size() + " news. Failed: "
+                        panel.setStatus("Refreshed: " + news.size() + " " + itemName() + ". Failed: "
                                 + String.join(", ", problems));
                     }
                 } catch (InterruptedException | ExecutionException e) {
@@ -126,13 +132,32 @@ public class GUI {
         }.execute();
     }
 
-    /** Add button: asks for the data of a new news item and saves it. */
+    /** News / Events buttons: shows the other list. */
+    private static void switchView(boolean events) {
+        showingEvents = events;
+        try {
+            reloadList(events ? "Showing events." : "Showing news.");
+        } catch (SQLException e) {
+            showError("Could not load the " + itemName() + ": " + e.getMessage());
+        }
+    }
+
+    /** Add button: asks for the data of a new news item (or event) and saves it. */
     private static void addNews() {
-        News news = NewsForm.show(frame, null);
+        News news = NewsForm.show(frame, null, showingEvents);
         if (news == null) {
             return; // the user pressed Cancel
         }
         try {
+            if (news instanceof Event event) {
+                if (!database.addEvent(event)) {
+                    showError("An event with this title, start time and location already exists.");
+                    return;
+                }
+                database.save();
+                reloadList("Event added.");
+                return;
+            }
             if (!database.addNews(news)) {
                 showError("A news item with this source and URL already exists.");
                 return;
@@ -148,14 +173,21 @@ public class GUI {
     private static void editNews() {
         News selected = panel.getSelectedNews();
         if (selected == null) {
-            showError("Select a news item first.");
+            showError("Select an item first.");
             return;
         }
-        News changed = NewsForm.show(frame, selected);
+        News changed = NewsForm.show(frame, selected, showingEvents);
         if (changed == null) {
             return; // the user pressed Cancel
         }
         try {
+            if (selected instanceof Event original) {
+                // The old event is passed too, because its key may have been edited.
+                database.updateEvent(original, (Event) changed);
+                database.save();
+                reloadList("Event updated.");
+                return;
+            }
             database.updateNews(changed);
             database.save();
             reloadList("News updated.");
@@ -168,15 +200,21 @@ public class GUI {
     private static void deleteNews() {
         News selected = panel.getSelectedNews();
         if (selected == null) {
-            showError("Select a news item first.");
+            showError("Select an item first.");
             return;
         }
         int result = JOptionPane.showConfirmDialog(frame,
-                "Delete \"" + selected.getTitle() + "\"?", "Delete news", JOptionPane.YES_NO_OPTION);
+                "Delete \"" + selected.getTitle() + "\"?", "Delete", JOptionPane.YES_NO_OPTION);
         if (result != JOptionPane.YES_OPTION) {
             return;
         }
         try {
+            if (selected instanceof Event event) {
+                database.deleteEvent(event.getTitle(), event.getEventDateTime(), event.getLocation());
+                database.save();
+                reloadList("Event deleted.");
+                return;
+            }
             database.deleteNews(selected.getSource(), selected.getUrl());
             database.save();
             reloadList("News deleted.");
@@ -189,7 +227,7 @@ public class GUI {
     private static void clearDatabase() {
         int result = JOptionPane.showConfirmDialog(
                 frame,
-                "Are you sure? This deletes all saved news.",
+                "Are you sure? This deletes all saved news and events.",
                 "Clear database",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE);
@@ -206,10 +244,20 @@ public class GUI {
         }
     }
 
-    /** Reads all news from the database again and shows them with a status message. */
+    /** Reads the current list (news or events) from the database again and shows it with a status message. */
     private static void reloadList(String status) throws SQLException {
-        panel.setNews(database.getAllNews());
+        panel.setNews(loadItems());
         panel.setStatus(status);
+    }
+
+    /** Returns all events or all news from the database, depending on which list is shown. */
+    private static List<? extends News> loadItems() throws SQLException {
+        return showingEvents ? database.getAllEvents() : database.getAllNews();
+    }
+
+    /** "events" or "news", for status messages. */
+    private static String itemName() {
+        return showingEvents ? "events" : "news";
     }
 
     /** Shows an error message in a pop-up. */
@@ -219,7 +267,10 @@ public class GUI {
 
     /** Returns the message of the original exception thrown in the background thread. */
     private static String rootMessage(Exception e) {
-        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Throwable cause = e;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
         String message = cause.getMessage();
         return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
     }

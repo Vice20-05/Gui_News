@@ -26,6 +26,7 @@ import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
+import DataHandle.Event;
 import DataHandle.News;
 
 /** Displays news in a searchable list (left, 1/3) with a details panel (right, 2/3). */
@@ -47,6 +48,9 @@ public class NewsPanel extends JPanel {
     private final JButton editButton = new JButton("Edit");
     private final JButton deleteButton = new JButton("Delete");
     private final JButton clearDbButton = new JButton("Clear DB");
+    // Switch the list between news and events.
+    private final JButton newsButton = new JButton("News");
+    private final JButton eventsButton = new JButton("Events");
     private final JLabel statusLabel = new JLabel(" ");
     private final JProgressBar loadingBar = new JProgressBar();
     private final JPanel detailsPanel = new JPanel(new BorderLayout(12, 12));
@@ -103,11 +107,13 @@ public class NewsPanel extends JPanel {
         splitPane.setResizeWeight(1.0 / 3.0);
         splitPane.setDividerLocation(1.0 / 3.0);
 
-        // Button bar under the list and details: [Add] [Edit] [Delete] [Clear DB]
+        // Button bar under the list and details: [Add] [Edit] [Delete] [News] [Events] [Clear DB]
         JPanel buttonBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         buttonBar.add(addButton);
         buttonBar.add(editButton);
         buttonBar.add(deleteButton);
+        buttonBar.add(newsButton);
+        buttonBar.add(eventsButton);
         buttonBar.add(clearDbButton);
 
         // Status bar: status text and a progress bar that only shows while loading.
@@ -132,6 +138,8 @@ public class NewsPanel extends JPanel {
     public void onEdit(Runnable action) { editButton.addActionListener(event -> action.run()); }
     public void onDelete(Runnable action) { deleteButton.addActionListener(event -> action.run()); }
     public void onClearDb(Runnable action) { clearDbButton.addActionListener(event -> action.run()); }
+    public void onShowNews(Runnable action) { newsButton.addActionListener(event -> action.run()); }
+    public void onShowEvents(Runnable action) { eventsButton.addActionListener(event -> action.run()); }
 
     /** Returns the news item selected in the list, or null if nothing is selected. */
     public News getSelectedNews() {
@@ -147,6 +155,8 @@ public class NewsPanel extends JPanel {
         editButton.setEnabled(!loading);
         deleteButton.setEnabled(!loading);
         clearDbButton.setEnabled(!loading);
+        newsButton.setEnabled(!loading);
+        eventsButton.setEnabled(!loading);
         revalidate();
     }
 
@@ -155,8 +165,8 @@ public class NewsPanel extends JPanel {
         statusLabel.setText(text);
     }
 
-    /** Replaces all news in the list with new ones. */
-    public void setNews(List<News> news) {
+    /** Replaces all items in the list with new ones (news or events, since Event extends News). */
+    public void setNews(List<? extends News> news) {
         allNews.clear();
         allNews.addAll(news);
         filterNews();
@@ -222,7 +232,14 @@ public class NewsPanel extends JPanel {
         if (news == null) {
             details.setText("Select an item to see its details.");
         } else {
+            // Events show when and where they happen right under the title.
+            String eventInfo = "";
+            if (news instanceof Event event) {
+                eventInfo = "Starts: " + formatDate(event.getEventDateTime()) + "\n"
+                        + "Location: " + event.getLocation() + "\n\n";
+            }
             details.setText(news.getTitle() + "\n\n"
+                    + eventInfo
                     + news.getDescription() + "\n\n"
                     + "Source: " + news.getSource() + "\n"
                     + "Author: " + news.getAuthor() + "\n"

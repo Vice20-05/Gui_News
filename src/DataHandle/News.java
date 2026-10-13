@@ -10,11 +10,11 @@ public class News {
     private String title;
     private String description;
     // source + url together are the primary key in the database.
-    private String source;
+   final  private String source;
     private String author;
     private String publisher;
     private Timestamp publishDate;
-    private String url;
+    final private String url;
     // When the item was saved to the database and when it was last changed.
     private Timestamp creationDate;
     private Timestamp lastModifiedDate;
@@ -37,7 +37,7 @@ public class News {
         this.creationDate = creationDate;
         this.lastModifiedDate = lastModifiedDate;
         this.language = valueOrEmpty(language);
-        setCoverImage(coverImage);
+        this.coverImage = normalizedCoverImage(coverImage);
     }
 
     public String getTitle() { return title; }
@@ -71,11 +71,16 @@ public class News {
     public String getCoverImage() { return coverImage; }
 
     /** Sets the cover image, falling back to the default image when it is empty. */
+
     public void setCoverImage(String coverImage) {
+        this.coverImage = normalizedCoverImage(coverImage);
+    }
+
+    private static String normalizedCoverImage(String coverImage) {
         if (coverImage == null || coverImage.isBlank()) {
             coverImage = DEFAULT_COVER_IMAGE;
         }
-        this.coverImage = coverImage;
+        return coverImage;
     }
 
     // Source and url have no setters: they form the primary key, so they never change.
