@@ -2,6 +2,10 @@
 
 A Java Swing desktop app for managing news and events. It loads news from RSS feeds and stores everything in a local SQLite database.
 
+## Screenshot
+
+![Main window](src/screenshot/Gui_news.png)
+
 ## Features
 
 - Add, view, edit and delete news and events
@@ -12,15 +16,6 @@ A Java Swing desktop app for managing news and events. It loads news from RSS fe
 - Clear DB button that asks for confirmation
 - Default cover image when a news item has no image of its own
 - Dark theme (black background, white text)
-
-## Technologies
-
-- Java Swing
-- SQLite
-- RSS / XML parsing
-- HTTP GET
-- JSON (Gson)
-- Maven
 
 ## Project structure
 
@@ -48,10 +43,9 @@ res/
 
 ## How to run
 
-1. Install Java 17 or newer.
-2. Open the project in VS Code or IntelliJ.
-3. Let Maven download the dependencies (Gson, SQLite JDBC).
-4. Run `Main.java`.
+1. Open the project in VS Code or IntelliJ.
+2. Let Maven download the dependencies (Gson, SQLite JDBC).
+3. Run `Main.java`.
 
 The database (`news.db`) is created automatically in the project folder.
 
