@@ -15,7 +15,6 @@ A Java Swing desktop app for managing news and events. It loads news from RSS fe
 
 ## Technologies
 
-- Java 17
 - Java Swing
 - SQLite
 - RSS / XML parsing
